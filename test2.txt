@@ -1,1208 +1,394 @@
-﻿
-이제부터 FAANG회사의 선임 엔지니어인 척할 것입니다.
-
-보안과 성능 및 유지보수에 주의를 기울여 다음 코드를 검토 후 리팩토링해주세요.
-
-선임 엔지니어라면 해당 코드에 대해 생성할 수 있는 출력을 제공하세요.
-
-/**
-
-* @apiNote 예산항목 상세
-
-* @param account_item account_item
-
-* @param menu_cd p : 계획, b : 운영
-
-* @param request bgt_no : 예산관리번호, bsnss_year : 경영주기
-
-*/
-
-//정보보호 여부 확정은 사용확정 이후부터 집행계획 마감 전까지 가능! 별도 이벤트 없음! 정보보호만 하고 저장 버튼만 있는 화면. 추가 필요!!
-
-//정보보호 여부 확정 ::: 신규투자 : atnri ~ 집행계획 마감 전
-
-//정보보호 여부 확정 ::: 지급수수료, New ITO: aad ~ 집행계획 마감 전
-
-@RequestMapping(value = "/{account_item}/{menu_cd}/view_popup.do", method = RequestMethod.GET)
-
-public String view_popup(@RequestParam Map<String, Object> map, Model model, HttpServletRequest request
-
-, @PathVariable(value = "account_item") String account_item, @PathVariable(value = "menu_cd") String menu_cd) {
-
-HttpSession session = request.getSession();
-
-String bgt_no = (String) map.get("bgt_no");
-
-
-String bsnss_year;
-
-
-if(map.get("bsnss_year") != null) {
-
-Integer by = Integer.parseInt((String) map.get("bsnss_year")); //xss 방지용 Integer 타입캐스팅
-
-bsnss_year = String.valueOf(by);
-
-} else {
-
-if(menu_cd.equals("p")) { // 계획
-
-bsnss_year = commonService.getPlanYear();
-
-} else { // 운영
-
-bsnss_year = commonService.getBudgetYear();
-
-}
-
-}
-
-
-int bgtListSeq = 0;
-
-
-if(this.isAuth(session, "isOnlyDmIm")){
-
-return "redirect:/common/redirectAlert_popup.do"; //유일하게 국내, 해외법인 권한만 있는경우 상세 진입 불가
-
-}
-
-
-UserPrivDto dto = (UserPrivDto) session.getAttribute("s_userPrivInfo");
-
-String now = CmFunction.getTodayString("yyyyMMdd");
-
-
-CmMap<String, Object> accountItemMap = new CmMap<>(), LoginMap = new CmMap<>();
-
-
-String status = null, newStatus = null;
-
-CmMap<String, Object> stepMap = null, authMap = null;
-
-boolean isMigration = false, isTransfer = false, isTransferSaveLimit = false, isAdmin = false, astAuth = false, enpRegPossble = false , atnriNextCheck = false , brdNextCheck = false;
-
-
-try {
-
-if(account_item.equals("p")) {
-
-account_item = "a";
-
-}
-
-
-List<CmMap<String, Object>> InvPrpsList = commonService.getCodeInfoInvList(bsnss_year);
-
-
-if(menu_cd.equals("p")) { // 계획
-
-model.addAttribute("plan_schedule", planService.planSchedule(bsnss_year, null));//예산운영일정
-
-
-int InvPrpsList_cnt = InvPrpsList.size();
-
-for(int v=0; v<InvPrpsList_cnt; v++) {
-
-if(InvPrpsList.get(v).getString("sub_nm").equals("migration")) {
-
-InvPrpsList.remove(v);
-
-break;
-
-}
-
-}
-
-}
-
-
-accountItemMap.put("cd", account_item);
-
-accountItemMap.put("menuCd", menu_cd);
-
-accountItemMap.put("bsnssYear", bsnss_year);
-
-accountItemMap.put("bsnssYearName", commonService.getYearName(bsnss_year));
-
-accountItemMap.put("bsnssYearStartDt", settingService.getScheduleByInfo(bsnss_year).get("start_dt").toString());
-
-
-if((boolean) session.getAttribute("s_isAdmin")){ // 관리자는 모든 권한 허용
-
-LoginMap.put("divCd", "admin");
-
-LoginMap.put("divNm", "관리자");
-
-LoginMap.put("teamCd", "admin");
-
-LoginMap.put("teamNm", "관리자");
-
-LoginMap.put("memId", session.getAttribute("s_memId"));
-
-LoginMap.put("memNm", session.getAttribute("s_memNm"));
-
-} else {
-
-LoginMap.put("divCd", ((List<String>) session.getAttribute("s_userDiv")).size() == 0 ? null : ((List<String>) session.getAttribute("s_userDiv")).get(0));
-
-LoginMap.put("divNm", ((List<String>) session.getAttribute("s_userDivNm")).size() == 0 ? null : ((List<String>) session.getAttribute("s_userDivNm")).get(0));
-
-LoginMap.put("teamCd", ((List<String>) session.getAttribute("s_userTeam")).size() == 0 ? null : ((List<String>) session.getAttribute("s_userTeam")).get(0));
-
-LoginMap.put("teamNm", ((List<String>) session.getAttribute("s_userTeamNm")).size() == 0 ? null : ((List<String>) session.getAttribute("s_userTeamNm")).get(0));
-
-LoginMap.put("memId", session.getAttribute("s_memId"));
-
-LoginMap.put("memNm", session.getAttribute("s_memNm"));
-
-}
-
-
-model.addAttribute("isBm", dto == null ? false : dto.getIsBm());
-
-model.addAttribute("isBo", dto == null ? false : dto.getIsBo());
-
-model.addAttribute("isPm", dto == null ? false : dto.getIsPm());
-
-model.addAttribute("isTm", dto == null ? false : dto.getIsTm());
-
-model.addAttribute("isAdmin", session.getAttribute("s_isAdmin"));
-
-
-if (bgt_no == null) {
-
-CmMap<String, Object> cmMap_getNo = new CmMap<String, Object>();
-
-cmMap_getNo.put("seq_nm", "dbo.make_temp_no");
-
-cmMap_getNo.put("seq_num", 6);
-
-accountItemMap.put("tempBgtNo", "T" + commonService.getSeq(cmMap_getNo));
-
-} else {
-
-CmMap<String, Object> redirectMap = new CmMap<>();
-
-redirectMap.put("object", "bgtNo");
-
-redirectMap.put("bgtNo", bgt_no);
-
-redirectMap.put("bsnssYear", bsnss_year);
-
-if(budgetService.getExistCnt(redirectMap) == 0){
-
-return "redirect:/common/redirectAlert_popup.do";
-
-}
-
-}
-
-
-accountItemMap.put("name", commonService.getCodeInfo(account_item, "account_item").get("cd_nm"));
-
-
-CmMap<String, Object> bgtInfo = budgetService.getBgtInfo(bgt_no, bsnss_year, account_item, bsnss_year);
-
-model.addAttribute("bgtVo", bgtInfo);
-
-
-if(account_item.equals("a") && menu_cd.equals("b")) { // 신규투자 + 예산운영
-
-CmMap<String, Object> paramMap = new CmMap<>();
-
-/**
-
-* 신규등록인 경우 현재 로그인한 사용자의 div/team 정보로 팀 예산현황 조회
-
-* 신규등록 + 슈퍼관리자 로그인 시 div의 전체 team 예산 합산하여 노출 (슈퍼관리자는 div/team 정보가 없음)
-
-*/
-
-paramMap.put("divCd", bgt_no != null ? bgtInfo.getString("chrg_div") : LoginMap.getString("divCd"));
-
-paramMap.put("teamCd", bgt_no != null ? bgtInfo.getString("chrg_team") : LoginMap.getString("teamCd"));
-
-paramMap.put("s_isAdmin", bgt_no == null ? session.getAttribute("s_isAdmin") : null);
-
-paramMap.put("bsnssYear", bsnss_year);
-
-
-CmMap<String, Object> amtMap = commonService.getTeamAmt(paramMap); // 팀 예산현황
-
-
-LinkedHashMap<String, Object> monthlyEnfrc = (LinkedHashMap<String, Object>) bgtInfo.get("monthlyEnfrc");
-
-CmMap<String, Object> cniv = (CmMap<String, Object>) monthlyEnfrc.get("cniv");
-
-CmMap<String, Object> sch = (CmMap<String, Object>) monthlyEnfrc.get("sch"); //
-
-if(amtMap != null && cniv != null) {
-
-amtMap.put("totalCniv", cniv.getLong("total"));
-
-}
-
-if(amtMap != null && sch != null) {
-
-amtMap.put("totalSch", sch.getLong("total"));
-
-}
-
-model.addAttribute("amtMap", amtMap);
-
-}
-
-
-if (bgt_no != null) {
-
-bgtListSeq = budgetService.getBgtListSeq(bgt_no, bsnss_year);
-
-status = statusUpdateService.getStatus(bgt_no, bsnss_year);
-
-newStatus = bgtInfo.getString("newStatus");
-
-if(newStatus.equals("")) {
-
-newStatus = status;
-
-}
-
-StepEnum stepEnum = StepEnum.valueOf(CmFunction.makeStepStatus(account_item, newStatus));
-
-stepMap = stepEnum.getMap();
-
-stepMap.put("reqIsDrop", false);
-
-if(bgtInfo.get("is_stop").toString().equals("true")) {
-
-stepMap.put("statusNm", "운영중지");
-
-}
-
-
-if ((dto != null && (dto.getIsBo() || dto.getIsBm())) || (boolean) session.getAttribute("s_isAdmin")) { // 예산운영자, 예산관리자는 모든 status 에서 등록 가능
-
-stepMap.put("regType", "reg");
-
-stepMap.put("adminCheck", true);
-
-logger.debug(":::: 예산운영자, 예산관리자는 모든 status 에서 등록 가능");
-
-
-isAdmin = true;
-
-} else {
-
-stepMap.put("adminCheck", false);
-
-}
-
-
-if (this.stepAuthCheck(account_item, menu_cd, bgtListSeq, (String) stepMap.get("auth"), request)) { //등록 및 다음단계로 갈 수 있는 버튼을 누를 수 있는지 권한
-
-stepMap.put("stepEnumCheck", true);
-
-} else {
-
-stepMap.put("stepEnumCheck", false);
-
-}
-
-
-if (this.stepAuthCheck(account_item, menu_cd, bgtListSeq, "isPm", request) && "view".equals(stepMap.getString("regType"))
-
-&& !("a_aad".equals(stepMap.getString("enumNm")) || "fs_aav".equals(stepMap.getString("enumNm")) || "i_aav".equals(stepMap.getString("enumNm")))) {
-
-stepMap.put("isTempAuth", true);
-
-} else {
-
-stepMap.put("isTempAuth", dto == null ? (boolean) session.getAttribute("s_isAdmin") : dto.getIsBm());
-
-}
-
-
-isTransfer = budgetItemService.getBgtIsTranfer(bgt_no);
-
-model.addAttribute("isTransfer", isTransfer);
-
-
-// 계획 + 이월 항목은 등록 항목 제한
-
-if("p".equals(menu_cd) && !isAdmin) {
-
-isTransferSaveLimit = isTransfer;
-
-}
-
-model.addAttribute("isTransferSaveLimit", isTransferSaveLimit);
-
-
-if("a".equals(account_item) && "p".equals(menu_cd) && (bgt_no == null || bgt_no.startsWith("P"))) {
-
-CmMap<String, Object> paramMap = new CmMap<>();
-
-paramMap.put("bgtListSeq", bgtListSeq);
-
-
-CmMap<String, Object> planReqInfo = planService.getPlanReqInfo(paramMap);
-
-
-if(planReqInfo != null) {
-
-logger.info("planReqInfo ::: " + planReqInfo);
-
-
-int reqSeq = planReqInfo.getInt("seq");
-
-String reqStatus = planReqInfo.getString("status");
-
-CmMap<String, Object> reqStatusMap = planService.getReqStatus(reqSeq, reqStatus);
-
-
-model.addAttribute("planReqInfo", planReqInfo);
-
-model.addAttribute("reqStatusMap", reqStatusMap);
-
-
-if("true".equals(planReqInfo.getString("is_drop"))) {
-
-stepMap.put("reqIsDrop", true);
-
-stepMap.put("regType", "view");
-
-stepMap.put("stepEnumCheck", false);
-
-}
-
-}
-
-
-if(bgt_no != null) {
-
-paramMap = new CmMap<>();
-
-paramMap.put("bgtNo", bgt_no);
-
-CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(paramMap);
-
-
-if(planAllocInfo != null) {
-
-logger.info("planAllocInfo ::: " + planAllocInfo);
-
-model.addAttribute("planAllocInfo", planAllocInfo);
-
-}
-
-}
-
-
-} else if ("a".equals(account_item) && "b".equals(menu_cd) && bgtInfo.get("transfer_plan_bgt_no") != null) {
-
-CmMap<String, Object> paramMap = new CmMap<>();
-
-paramMap.put("bgtNo", bgtInfo.get("transfer_plan_bgt_no"));
-
-
-CmMap<String, Object> planReqInfo = planService.getPlanReqInfo(paramMap);
-
-CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(paramMap);
-
-
-if(planReqInfo != null) {
-
-logger.info("planReqInfo ::: " + planReqInfo);
-
-model.addAttribute("planReqInfo", planReqInfo);
-
-}
-
-
-if(planAllocInfo != null) {
-
-/**
-
-* 2023.09.19 예산운영>P코드로 생성된 A코드 예산항목의 잠정예산 정의 변경
-
-* P->A로 생성된 항목의 잠정예산 = 예정계약금액 + 계약(투자)금액 (현재 경영주기에 해당하는 계약금액만 합산)
-
-* 배정예산관리(신규투자)의 잠정예산과 값 동일
-
-* 예산상세에서 잠정예산이 보이는 경우는 P->A로 생성한 경우
-
-*/
-
-
-// 월별 금액 조회 위해 년/월 세팅
-
-paramMap = new CmMap<>();
-
-List<String> yearList = bgtMngService.byInfoMonthYearList(bsnss_year);
-
-paramMap.put("yearList", CmFunction.getYearList(yearList));
-
-paramMap.put("byMonthYearList", yearList);
-
-paramMap.put("bgtNo", bgt_no);
-
-
-planAllocInfo.put("amt", allocService.getPrBgtAmt(paramMap)); // P->A인 신규투자 예산항목의 경우에만 잠정예산 재세팅
-
-logger.info("planAllocInfo ::: " + planAllocInfo);
-
-model.addAttribute("planAllocInfo", planAllocInfo);
-
-}
-
-}
-
-
-// 집행계획금액,계약정보 등록/수정 가능 권한
-
-authMap = this.authCheck(bgtListSeq, request);
-
-
-// cntrcAddPossible 계약정보 추가 가능 상태
-
-// 최종항목점검중, 팀장승인중, 최종사용확정완료 이후 (최종사용확정완료 포함)
-
-if(authMap.getString("cntrcRegAuth").equals("true")) {
-
-if(stepEnum.name().equals("a_aad") || stepEnum.name().equals("fs_aav") || stepEnum.name().equals("i_aav")) { // 최종항목점검 중
-
-authMap.put("cntrcAddPossible", true);
-
-} else if(stepEnum.name().equals("a_brd") || stepEnum.name().equals("fs_brd") || stepEnum.name().equals("i_brd")) { // 팀장승인 중
-
-authMap.put("cntrcAddPossible", true);
-
-} else {
-
-String makeStatusTemp = account_item + "_afd";
-
-if(account_item.equals("f") || account_item.equals("s")) {
-
-makeStatusTemp = "fs_afd";
-
-}
-
-authMap.put("cntrcAddPossible", stepEnum.valueOf(stepEnum.name()).isEqualOrNext(makeStatusTemp)); // 최종사용확정완료 이후 (최종사용확정완료 포함)
-
-}
-
-}
-
-
-// enpRegPossble 집행계획금액 등록 가능 상태
-
-// 운영 + 신규투자/지급수수료/보안용역수수료 + 팀장승인중 이후 상태 (팀장승인중 포함)
-
-// 계획 + 신규투자 + PM확정 이전 상태 (PM확정 제외)
-
-// 계획 + 지급수수료/보안용역수수료
-
-if(menu_cd.equals("b")) {
-
-if(account_item.equals("a")) {
-
-enpRegPossble = stepEnum.valueOf(stepEnum.name()).isNext("a_brd");
-
-atnriNextCheck = stepEnum.valueOf(stepEnum.name()).isNext("a_aav");
-
-brdNextCheck = stepEnum.valueOf(stepEnum.name()).isNext("a_brd");
-
-} else if (account_item.equals("f") || account_item.equals("s")) {
-
-enpRegPossble = stepEnum.valueOf(stepEnum.name()).isEqualOrNext("fs_brd");
-
-}
-
-} else {
-
-if(account_item.equals("a")) {
-
-enpRegPossble = stepEnum.valueOf(stepEnum.name()).isBefore("a_ppd");
-
-} else if (account_item.equals("f") || account_item.equals("s")) {
-
-enpRegPossble = true;
-
-}
-
-}
-
-
-
-String cntrcType = String.valueOf(bgtInfo.get("bgt_cntrc_type"));
-
-if ("품의작성".equals(stepMap.get("buttonNm")) && !cntrcType.equals("d")) { // 세부(계약형태)건의 경우 제외
-
-// 품의담당자인지 체크
-
-boolean isApprovalManager = budgetService.getBgtApproValManagerCheck(bgt_no, (String) session.getAttribute("s_memId"));
-
-stepMap.put("isApprovalManager", isApprovalManager);
-
-
-// 현재 품의 작성 가능 여부 체크1 - 작성 된 품의가 없을 경우 품의작성 버튼 노출(isApprovalCreated false일 경우만 노출)
-
-boolean isApprovalCreated = budgetService.getBgtApprovalCreatedCheck(bgt_no);
-
-
-// 현재 품의 작성 가능 여부 체크2 - 품의작성 단계 이며, 기존에 작성 된 품의가 없을 경우 -> 품의작성 시 필요한 필수값들 다 있는지 체크. 한개라도 없을 경우 이하 로직 타지 않음, 품의작성 버튼 노출x, 알람 띄우기
-
-boolean hasApprovalRequiredValues = true;
-
-if (!isApprovalCreated) {
-
-// 투자시작일 / 계약시작일 chk
-
-if (account_item.equals("a")) {
-
-if (bgtInfo.get("inv_start_dt") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 투자시작일(inv_start_dt) 없음 @@@");}
-
-// 약정항목 chk
-
-if (bgtInfo.get("contract_item") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 약정항목(inv_prps as contract_item) 없음 @@@");}
-
-// 투자코드 chk
-
-if (bgtInfo.get("inv_wbs_cd") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 투자코드(inv_wbs_cd) 없음 @@@");}
-
-} else {
-
-if (bgtInfo.get("cntrc_start_dt") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 계약시작일(cntrc_start_dt) 없음 @@@");}
-
-}
-
-// 팀명 chk
-
-if (bgtInfo.get("team_nm") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 팀명(team_nm) 없음 @@@");}
-
-// 담당자명 chk
-
-if (bgtInfo.get("mem_nm") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 담당자명(mem_nm) 없음 @@@");}
-
-// 코스트센터 chk
-
-if (bgtInfo.get("cost_center") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 코스트센터(cost_center) 없음 @@@");}
-
-// 마스터코드 chk
-
-if (bgtInfo.get("master_cd") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 마스터코드(master_cd) 없음 @@@");}
-
-// 비용유형 chk
-
-if (bgtInfo.get("cost_type") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 비용유형(cost_type) 없음 @@@");}
-
-// 구매방식 chk
-
-if (bgtInfo.get("prchs_way") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 구매방식(prchs_way) 없음 @@@");}
-
-
-logger.info("@@@ 품의 작성 필수값 체크 - hasApprovalRequiredValues ::: " + hasApprovalRequiredValues);
-
-if (account_item.equals("a")) logger.info("@@@ 품의 작성 필수값 체크 - inv_start_dt ::: " + bgtInfo.get("inv_start_dt"));
-
-if (account_item.equals("a")) logger.info("@@@ 품의 작성 필수값 체크 - inv_prps as contract_item ::: " + bgtInfo.get("contract_item"));
-
-if (account_item.equals("a")) logger.info("@@@ 품의 작성 필수값 체크 - inv_wbs_cd ::: " + bgtInfo.get("inv_wbs_cd"));
-
-if (!account_item.equals("a")) logger.info("@@@ 품의 작성 필수값 체크 - cntrc_start_dt ::: " + bgtInfo.get("cntrc_start_dt"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - team_nm ::: " + bgtInfo.get("team_nm"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - mem_nm ::: " + bgtInfo.get("mem_nm"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - cost_center ::: " + bgtInfo.get("cost_center"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - master_cd ::: " + bgtInfo.get("master_cd"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - cost_type ::: " + bgtInfo.get("cost_type"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - prchs_way ::: " + bgtInfo.get("prchs_way"));
-
-}
-
-model.addAttribute("hasApprovalRequiredValues", hasApprovalRequiredValues);
-
-
-if (hasApprovalRequiredValues) {
-
-// 현재 품의 작성 가능 여부 체크3 - 계약시작일/투자시작일(신규투자) 월 -1개월부터 노출 되어야 함(isApprovalPeriod true일 경우만 노출)
-
-boolean isApprovalPeriod = false;
-
-SimpleDateFormat dateFormat = new SimpleDateFormat ("yyyy-MM-dd");
-
-Date cntrcStartDt = (Date) bgtInfo.get("cntrc_start_dt");
-
-Date invStartDt = (Date) bgtInfo.get("inv_start_dt");
-
-Date startDate = null;
-
-
-if (cntrcStartDt != null) {
-
-startDate = dateFormat.parse(CmFunction.getDateToString(cntrcStartDt, "yyyy-MM-dd"));
-
-} else if (invStartDt != null) {
-
-startDate = dateFormat.parse(CmFunction.getDateToString(invStartDt, "yyyy-MM-dd"));
-
-}
-
-String startDt = CmFunction.getDateToString(startDate, "");
-
-
-int nowMonth = Integer.parseInt(now.substring(4,6));
-
-int nowYear = Integer.parseInt(now.substring(0,4));
-
-int compareMonth = 0;
-
-int compareYear = nowYear;
-
-if (nowMonth == 12) {
-
-compareYear = compareYear +1;
-
-compareMonth = 1;
-
-} else {
-
-compareMonth = nowMonth +1;
-
-}
-
-
-String compareDate = compareYear + (compareMonth<10?"0"+compareMonth:String.valueOf(compareMonth)) + now.substring(6); // 현재 +1달
-
-if (Integer.parseInt(startDt) <= Integer.parseInt(compareDate)) { // 현재 +1달(compareDate) 보다 시작일(startDt)이 같거나 작아야 함
-
-isApprovalPeriod = true;
-
-}
-
-
-logger.info("@@@ 품의 작성 필수값 체크 - isApprovalCreated ::: " + isApprovalCreated);
-
-logger.info("@@@ 품의 작성 필수값 체크 - isApprovalPeriod ::: " + isApprovalPeriod);
-
-logger.info("@@@ 품의 작성 필수값 체크 - isApprovalManager ::: " + isApprovalManager);
-
-logger.info("@@@ 품의 작성 필수값 체크 - (boolean) session.getAttribute(\"s_isAdmin\") ::: " + (boolean) session.getAttribute("s_isAdmin"));
-
-logger.info("@@@ 품의 작성 필수값 체크 - (dto == null ? false : dto.getIsBm()) ::: " + (dto == null ? false : dto.getIsBm()));
-
-if (!isApprovalCreated && isApprovalPeriod) {
-
-model.addAttribute("isApprovalBtnExpose", true);
-
-
-// 품의작성 버튼 노출 가능 하고 필수값이 모두 있을 경우, 담당자 혹은 어드민/예산관리자 권한 일때만 amt에 정보 새로 insert or update 한다.
-
-if (isApprovalManager || (boolean) session.getAttribute("s_isAdmin") || (dto == null ? false : dto.getIsBm())) {
-
-// 계약금액 리체크(총 금액이 아닌, 품의작성이 안된 금액만 가져와야 함 - status 0 / getBgtCntrcDataList)
-
-long cntrcAmt = 0; // 총 계약금액(신규투자의 경우 총 투자금액 / 지급수수료는 BY상관없이 계약/정보 탭 에서 진행 안된 품의의 계약금액 합산)
-
-long cntrcByAmtTotal = 0; // 전체 계약 금액 중 by에 해당 하는 계약금액의 합계 금액 - 품의가 여러건 일 경우 합산을 위함 23.03.15
-
-CmMap<String, Object> cntrcMap = new CmMap<String, Object>();
-
-cntrcMap.put("bgtListSeq", Integer.parseInt(bgtInfo.get("bgt_list_seq").toString()));
-
-cntrcMap.put("bgtNo", bgtInfo.get("bgtNo").toString());
-
-cntrcMap.put("bsnssYear", bgtInfo.get("bsnss_year").toString());
-
-List<CmMap<String, Object>> BgtCntrcDataList = planService.getBgtCntrcDataList(cntrcMap);
-
-for (CmMap<String, Object> i : BgtCntrcDataList) {
-
-String approvalStatus = String.valueOf(i.get("status"));
-
-if (approvalStatus.equals("0")) {
-
-long amt = Long.parseLong(String.valueOf(i.get("total_cntrc_amt")));
-
-boolean is_plan = (boolean) i.get("is_plan");
-
-if(!is_plan){
-
-cntrcAmt = cntrcAmt + amt;
-
-}
-
-
-// 집행할 금액(품의진행 할 금액) ? 전체 계약 금액 중 by에 해당 하는 계약금액의 합계 금액 가져옴
-
-int cntrcSeq = (int) i.get("cntrc_seq");
-
-Map<String, Object> byInfo = settingService.getByInfoDetail(bsnss_year);
-
-int first_year = Integer.parseInt(String.valueOf(byInfo.get("start_dt")).substring(0,4));
-
-int last_year = Integer.parseInt(String.valueOf(byInfo.get("end_dt")).substring(0,4));
-
-List<String> ymList = CmFunction.getDateGapMonthly(String.valueOf(byInfo.get("start_dt")), String.valueOf(byInfo.get("end_dt")), "yyyy-MM", "yyyyMM");
-
-List<Integer> yearList = new ArrayList<>();
-
-for (int c=first_year; c<=last_year; c++) {
-
-yearList.add(c);
-
-}
-
-long cntrcByAmt = budgetService.getcntrcByTotalAmt(cntrcSeq, ymList, yearList);
-
-cntrcByAmtTotal = cntrcByAmtTotal + cntrcByAmt;
-
-}
-
-}
-
-logger.info("@@@ 품의 작성 필수값 체크 - cntrcAmt ::: " + cntrcAmt + " -> 신규투자 : 총투자(계약)금액, 요청금액 / 신규투자 외 : 배정(잔여)예산");
-
-logger.info("@@@ 품의 작성 필수값 체크 - cntrcByAmtTotal ::: " + cntrcByAmtTotal + " -> 당기BY집행금액(계획) : 예산항목의 BY계약금액(a/f/s 동일)");
-
-
-LinkedHashMap<String, Object> monthlyEnfrc = (LinkedHashMap<String, Object>) bgtInfo.get("monthlyEnfrc");
-
-//CmMap<String, Object> asMap = (CmMap<String, Object>) monthlyEnfrc.get("배정예산");
-
-CmMap<String, Object> asMap = (CmMap<String, Object>) monthlyEnfrc.get("as");
-
-long asAmt = asMap==null?0:Long.parseLong(String.valueOf(asMap.get("total")));
-
-//CmMap<String, Object> enMap = (CmMap<String, Object>) monthlyEnfrc.get("집행금액");
-
-CmMap<String, Object> enMap = (CmMap<String, Object>) monthlyEnfrc.get("en");
-
-long enAmt = enMap==null?0:Long.parseLong(String.valueOf(enMap.get("total")));
-
-
-CmMap<String, Object> enpMap = (CmMap<String, Object>) monthlyEnfrc.get("enp");
-
-long enpAmt = enpMap==null?0:Long.parseLong(String.valueOf(enpMap.get("total")));
-
-
-CmMap<String, Object> cnivMap = (CmMap<String, Object>) monthlyEnfrc.get("cniv");
-
-long cnivAmt = cnivMap==null?0:Long.parseLong(String.valueOf(cnivMap.get("total")));
-
-
-CmMap<String,Object> cntrc = budgetService.getBgtCntrcInfo(bgtListSeq);
-
-List<CmMap<String,Object>> cntrcList = (List<CmMap<String, Object>>) cntrc.get("cntrcList");
-
-long completeCntrcAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no); //완료되지 않은 품의의 계약금액
-
-/*for(int i = 0 ; i < cntrcList.size() ; i++){
-
-if(cntrcList.get(i).getString("status").equals("3")){
-
-completeCntrcAmt += cntrcList.get(i).getLong("total_cntrc_amt");
-
-}
-
-}
-
-long cntrcEnfrcTotalAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no);*/
-
-
-CmMap<String, Object> approvalAmtMap = new CmMap<>();
-
-approvalAmtMap.put("bgt_no", bgt_no); // 예산항목번호
-
-approvalAmtMap.put("account_code", accountItemMap.get("name")); // 계정과목(계정항목)
-
-approvalAmtMap.put("execute_amt", enpAmt); // 당기 BY집행금액 (집행 계획 금액) 23./08.18 수정
-
-approvalAmtMap.put("team_nm", bgtInfo.get("team_nm")); // 팀명
-
-approvalAmtMap.put("user_nm", bgtInfo.get("mem_nm")); // 담당자명
-
-approvalAmtMap.put("cost_center", bgtInfo.get("cost_center")); // 코스트센터
-
-approvalAmtMap.put("cost_center_nm", bgtInfo.get("cost_center_nm")); // 코스트센터 명
-
-approvalAmtMap.put("master_cd", bgtInfo.get("master_cd")); // 마스터코드
-
-approvalAmtMap.put("master_cd_nm", bgtInfo.get("master_code_nm")); // 마스터코드 명
-
-approvalAmtMap.put("budget_type", bgtInfo.get("cost_type")); // 유형(비용유형)
-
-//역치환 추가
-
-String budget_type_nm = bgtInfo.get("cost_type_grp_nm") + " > " + bgtInfo.get("cost_type_nm");
-
-budget_type_nm = budget_type_nm.replaceAll("/", "/");
-
-budget_type_nm = budget_type_nm.replaceAll("<", "<").replaceAll(">", ">");
-
-budget_type_nm = budget_type_nm.replaceAll("(", "\\(").replaceAll(")", "\\)");
-
-budget_type_nm = budget_type_nm.replaceAll("'", "'");
-
-budget_type_nm = budget_type_nm.replaceAll(""", "\"");
-
-approvalAmtMap.put("budget_type_nm", budget_type_nm); // 유형(비용유형) 내용
-
-approvalAmtMap.put("inv_wbs_cd", bgtInfo.get("inv_wbs_cd")); // 투자코드
-
-approvalAmtMap.put("prchs_way", bgtInfo.get("prchs_way").equals("d")?"F1":"P2"); // 집행구분 = 구매방식(간접:i->P2/직접:d->F1)
-
-approvalAmtMap.put("contract_item", bgtInfo.get("contract_item")); // 약정항목 - 투자코드 lvl1,2(신규투자 외 null로 들어감)
-
-
-String approvalUrl = "";
-
-if (account_item.equals("a")) { // 신규투자 분기 처리
-
-approvalUrl = APPROVAL_INV_URL+bgt_no;
-
-approvalAmtMap.put("approval_type", "100"); // 품의구분(100:투자집행,200:일반품의)
-
-// long totalAmt = Long.parseLong(String.valueOf(bgtInfo.get("total_amt")));
-
-approvalAmtMap.put("budget_amt", cntrcAmt); // 항목예산 - 총 계약금액(총 투자금액). 신규투자는 품의 여러개가 안되기 때문에 총 계약금액으로 가져감
-
-approvalAmtMap.put("contract_amt", 0); // 계약금액 - 0
-
-approvalAmtMap.put("inv_start_dt", bgtInfo.get("inv_start_dt").toString().substring(0,4)+bgtInfo.get("inv_start_dt").toString().substring(5,7)); // 예정월 - 투자시작일(YYYYMM)형태로 전달
-
-long diffAmt = cntrcAmt - cntrcByAmtTotal; // 총투자(계약)금액 - 당기BY집행금액(계획)(BY계약금액) - 23.04.17 수정
-
-approvalAmtMap.put("diff_amt", diffAmt);
-
-logger.info("@@@ 품의 작성 필수값 체크 - diffAmt ::: " + (cntrcAmt - cntrcByAmtTotal) + " -> 신규투자 diffAmt = cntrcAmt - cntrcByAmtTotal");
-
-} else {
-
-approvalUrl = APPROVAL_URL+bgt_no;
-
-approvalAmtMap.put("approval_type", "200"); // 품의구분(100:투자집행,200:일반품의)
-
-long budgetAmt = asAmt - completeCntrcAmt; // 배정예산 - 기계약금액 23.08.09 변경 (구) 배정예산 - 집행금액
-
-approvalAmtMap.put("budget_amt", budgetAmt); // 항목예산 - 해당 BY 배정예산 -> 배정(잔여)예산: 배정예산-집행금액 23.03.06 품의 정보 변경
-
-approvalAmtMap.put("contract_amt", cntrcAmt); // 계약금액 - 총 계약금액x, 품의 작성 안된 계약금액의 합(계약건이 2건 이상일 경우 루프 돌려서 합산 된 금액 가져옴)
-
-long diffAmt = budgetAmt - cntrcByAmtTotal; // 과부족 : 배정(잔여)예산 - 당기BY집행금액(계획) 23.04.17 수정
-
-approvalAmtMap.put("diff_amt", diffAmt>0?"여유":diffAmt==0?"일치":"부족"); // 0보다 크면 여유, 0이면 일치, 0보다 작으면 부족
-
-logger.info("@@@ 품의 작성 필수값 체크 - completeCntrcAmt ::: " + completeCntrcAmt);
-
-logger.info("@@@ 품의 작성 필수값 체크 - cnivAmt ::: " + cnivAmt);
-
-logger.info("@@@ 품의 작성 필수값 체크 - asAmt ::: " + asAmt);
-
-logger.info("@@@ 품의 작성 필수값 체크 - budgetAmt ::: " + budgetAmt);
-
-logger.info("@@@ 품의 작성 필수값 체크 - diffAmt ::: " + (budgetAmt - cntrcByAmtTotal) + " -> 지급수수료 diffAmt = budgetAmt - cntrcByAmtTotal");
-
-logger.info("@@@ 품의 작성 필수값 체크 - diff status ::: " + diffAmt + " -> " + (diffAmt>0?"여유":diffAmt==0?"일치":"부족") + " (과부족 : 0보다 크면 여유, 0이면 일치, 0보다 작으면 부족 으로 표기)");
-
-}
-
-model.addAttribute("approvalUrl", approvalUrl);
-
-
-// if_approval_amt insert & update
-
-budgetService.updateApprovalAmtInfo(approvalAmtMap);
-
-}
-
-
-} else {
-
-model.addAttribute("isApprovalBtnExpose", false);
-
-}
-
-} else {
-
-model.addAttribute("isApprovalBtnExpose", false);
-
-}
-
-}
-
-
-// 자산번호 세팅
-
-// 2023.07.11 자산번호 수정 가능한 상태 추가 : 자산번호등록중 ~ 집행계획등록마감
-
-String stepNm = (String) stepMap.get("enumNm");
-
-String[] statusArr = {"a_aav", "a_atnri", "a_aad", "a_afi", "a_afd", "a_enreg", "a_encfm", "a_encls"};
-
-boolean canModifyAsset = false;
-
-
-for(String st : statusArr){
-
-if(st.equals(stepNm)){
-
-canModifyAsset = true;
-
-break;
-
-}
-
-}
-
-if (canModifyAsset) { // statusNum : 자산번호 등록 중
-
-// 임시자산번호등록 버튼 노출 여부 확인 -> true : 노출
-
-if ((dto != null && (dto.getIsBo() || dto.getIsBm())) || (boolean) session.getAttribute("s_isAdmin")) {
-
-astAuth = true;
-
-}
-
-}
-
-
-// 2023.07.19 자산번호 등록중 상태이면서 PM/팀장 권한인 경우 저장되어있는 자산번호 노출 X
-
-if(!("a_aav".equals(stepNm) && (dto.getIsPm() || dto.getIsTm()))){
-
-model.addAttribute("astNoArr", bgtInfo.get("ast_no_arr"));
-
-String[] ast_no_arr_txt = (String[]) bgtInfo.get("ast_no_arr");
-
-model.addAttribute("astNoArrTxt", Arrays.toString(ast_no_arr_txt));
-
-}
-
-
-model.addAttribute("astAuth", astAuth);
-
-model.addAttribute("stepEnum", stepMap);
-
-model.addAttribute("stepEnumName", stepEnum.name());
-
-model.addAttribute("status", status);
-
-model.addAttribute("authMap", authMap);
-
-
-if (status.equals("afd") || enpRegPossble) { // afd도 건 이유는 new ito 때문에!
-
-CmMap<String, Object> enfrcMap = budgetService.enfrcMap(bgt_no, bgtListSeq, session, bsnss_year);
-
-model.addAttribute("enfrcMap", enfrcMap);
-
-if(account_item.equals("i")) { // NEW ITO
-
-model.addAttribute("isCmpEmpno", budgetService.isCmpEmpno(bgtListSeq, (String) session.getAttribute("s_memId"))); // 업체담당자 여부 체크
-
-model.addAttribute("newItoClosedStatus", budgetService.getBgtNewItoMonthClosedStatus(bgtListSeq, now.substring(0,6))); // 해당 예산항목의 월별 마감 상태 (reg = 업체담당자 등록, closed = 담당 PM 마감)
-
-}
-
-}
-
-
-// NEW ITO
-
-if(account_item.equals("i")) {
-
-// 당월 추가비용(ARC-RRC) 입력 가능 여부
-
-model.addAttribute("arcRrcDisabled", budgetService.arcRrcDisabled(bgt_no, bgtListSeq, bsnss_year));
-
-// 증빙자료 or 메모 첨부한 연월
-
-model.addAttribute("newItoFileMemoExistYmList", budgetService.getNewItoFileMemoExistYmList(bgtListSeq, "newito_month"));
-
-// SAP, Retail, POS 항목은 배분기준관리 reg_type = view
-
-model.addAttribute("distribution_type", CmFunction.ITO_AREA_AMS.containsKey(bgt_no) ? "view" : "");
-
-}
-
-
-model.addAttribute("tagList", commonService.getTagList("bgt_list_data", bgtListSeq));
-
-model.addAttribute("changePrchsWay", budgetService.changePrchsWay(bgt_no));
-
-}
-
-model.addAttribute("chargebackVo", budgetService.getBgtCbInfo((List<String>) bgtInfo.get("monthly"), bgtListSeq, 0, account_item, status, (List<String>) bgtInfo.get("itsm_list")));
-
-model.addAttribute("cntrcApprovalVo", budgetService.getBgtCntrcInfo(bgtListSeq));
-
-
-// model.addAttribute("calcPeriodList", commonService.getCodeInfoList("calc_period"));
-
-model.addAttribute("prchsWayList", commonService.getCodeInfoList("prchs_way"));
-
-// model.addAttribute("markupList", commonService.getCodeInfoList("markup"));
-
-model.addAttribute("BgtCntrcTypeList", commonService.getCodeInfoList("bgt_cntrc_type"));
-
-model.addAttribute("InvPrpsList", InvPrpsList);
-
-} catch (Exception e) {
-
-logger.error("exception", e);
-
-}
-
-model.addAttribute("classNm", BgtEnum.valueOf(account_item).getTitle());
-
-accountItemMap.put("accountItemStatus", bsnss_year);
-
-model.addAttribute("accountItem", accountItemMap);
-
-model.addAttribute("LoginMap", LoginMap);
-
-model.addAttribute("bgtListSeq", bgtListSeq);
-
-model.addAttribute("bgtNo", bgt_no);
-
-model.addAttribute("status", status);
-
-model.addAttribute("priv", session.getAttribute("s_userPrivInfo"));
-
-model.addAttribute("isMigration", bgt_no == null ? false : budgetService.isMigration(bgt_no, bsnss_year));
-
-model.addAttribute("astAuth", astAuth);
-
-model.addAttribute("btnNowBy", (bgt_no == null || bsnss_year.equals(commonService.getBudgetYear())) ? null : budgetItemService.getNowBsnssYear(bgt_no, commonService.getBudgetYear()));
-
-model.addAttribute("btnBeforeBy", bgt_no == null ? null : budgetItemService.getBeforeBsnssYear(bgt_no, bsnss_year));
-
-
-CmMap<String, CmMap<String, Object>> wrapperMap = new CmMap<>();
-
-CmMap<String, Object> currentStepMap = null;
-
-
-String currentStep = account_item + "_" + status;
-
-for (ShowByItemEnum showByItemEnum : ShowByItemEnum.values()) {
-
-CmMap<String, Object> sMap = showByItemEnum.getMap();
-
-wrapperMap.put(sMap.get("enumNm"), sMap);
-
-}
-
-
-String defaultType = "";
-
-if (stepMap != null) {
-
-boolean stepEnumCheck = (boolean) stepMap.get("stepEnumCheck");
-
-String regType = (String) stepMap.get("regType");
-
-
-if (stepEnumCheck) {
-
-currentStepMap = (CmMap<String, Object>) wrapperMap.get(currentStep);
-
-if (currentStepMap == null) { // 해당하는 step이 없다면
-
-defaultType = regType;
-
-}
-
-} else {
-
-defaultType = "view";
-
-}
-
-
-if (isMigration && stepEnumCheck) {
-
-defaultType = "reg";
-
-}
-
-} else { // bgt_no = null(초기 등록 화면)
-
-defaultType = "reg";
-
-}
-
-
-if(dto != null && dto.getIsBm()){ // 예산관리자는 모든 status 에서 등록 가능
-
-currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_reg");
-
-}
-
-
-if (currentStepMap == null) {
-
-if ("reg".equals(defaultType)) {
-
-currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_reg");
-
-} else {
-
-currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_view");
-
-}
-
-}
-
-
-model.addAttribute("isView", currentStepMap);
-
-model.addAttribute("account_item", account_item);
-
-model.addAttribute("enpRegPossble" ,enpRegPossble);
-
-model.addAttribute("atnriNextCheck" , atnriNextCheck);
-
-model.addAttribute("brdNextCheck" , brdNextCheck);
-
-if(map.get("reportId") != null && !"".equals(map.get("reportId"))) {
-
-model.addAttribute("reportId", (String) map.get("reportId"));
-
-}
-
-model.addAttribute("menuCd" , menu_cd);
-
-
-
-//2023.09.01 품의작성 중 단계에서 품의작성 할 계약건의 운영여부가 '계획'인 경우 품의작성 버튼 비활성 처리
-
-boolean approvalFlag = false;
-
-if(status != null){
-
-if(status.equals("aad") || status.equals("bpcn")){
-
-approvalFlag = budgetService.checkApprovalFlag(bgt_no);
-
-}
-
-}
-
-
-model.addAttribute("approvalFlag" , approvalFlag);
-
-
-return "/budget/item_view";
-
-}
-
-﻿
+    @RequestMapping(value = "/test/{account_item}/{menu_cd}/view_popup.do", method = RequestMethod.GET)
+    public String new_view_popup(@RequestParam Map<String, Object> paramMap, Model model, HttpServletRequest request
+            , @PathVariable(value = "account_item") String account_item, @PathVariable(value = "menu_cd") String menu_cd) {
+        HttpSession session = request.getSession();
+
+        //유일하게 국내, 해외법인 권한만 있는경우 상세 진입 불가
+        if(this.isAuth(session, "isOnlyDmIm")){
+            return "redirect:/common/redirectAlert_popup.do";
+        }
+
+        String bgt_no = (String) paramMap.get("bgt_no");
+
+        String bsnss_year = budgetService.decideBsnssYear(paramMap, menu_cd);
+
+        int bgtListSeq = 0;
+
+        CmMap<String, Object> LoginMap = budgetService.determineLoginMap(session);
+
+        UserPrivDto userPrivDto = (UserPrivDto) session.getAttribute("s_userPrivInfo");
+        String now = CmFunction.getTodayString("yyyyMMdd");
+
+        CmMap<String, Object> accountItemMap = budgetService.initializeAccountItemMap(account_item, menu_cd, bsnss_year, bgt_no);
+
+        String status = null, newStatus = null;
+        CmMap<String, Object> stepMap = null, authMap = null;
+        boolean isMigration = false, isTransfer = false, isTransferSaveLimit = false, isAdmin = false, astAuth = false, enpRegPossble = false , atnriNextCheck = false , brdNextCheck = false;
+
+        try {
+            if(account_item.equals("p")) {
+                account_item = "a";
+            }
+
+            CmMap<String, Object> bgtInfo = budgetService.getBgtInfo(bgt_no, bsnss_year, account_item, bsnss_year);
+
+            if(account_item.equals("a") && menu_cd.equals("b")) { // 신규투자 + 예산운영
+                CmMap<String, Object> dtoMap = new CmMap<>();
+                /**
+                 * 신규등록인 경우 현재 로그인한 사용자의 div/team 정보로 팀 예산현황 조회
+                 * 신규등록 + 슈퍼관리자 로그인 시 div의 전체 team 예산 합산하여 노출 (슈퍼관리자는 div/team 정보가 없음)
+                 */
+                dtoMap.put("divCd", bgt_no != null ? bgtInfo.getString("chrg_div") : LoginMap.getString("divCd"));
+                dtoMap.put("teamCd", bgt_no != null ? bgtInfo.getString("chrg_team") : LoginMap.getString("teamCd"));
+                dtoMap.put("s_isAdmin", bgt_no == null ? session.getAttribute("s_isAdmin") : null);
+                dtoMap.put("bsnssYear", bsnss_year);
+
+                CmMap<String, Object> amtMap = commonService.getTeamAmt(dtoMap); // 팀 예산현황
+
+                LinkedHashMap<String, Object> monthlyEnfrc = (LinkedHashMap<String, Object>) bgtInfo.get("monthlyEnfrc");
+                CmMap<String, Object> cniv = (CmMap<String, Object>) monthlyEnfrc.get("cniv");
+                CmMap<String, Object> sch = (CmMap<String, Object>) monthlyEnfrc.get("sch");  //
+                if(amtMap != null && cniv != null) {
+                    amtMap.put("totalCniv", cniv.getLong("total"));
+                }
+                if(amtMap != null && sch != null) {
+                    amtMap.put("totalSch", sch.getLong("total"));
+                }
+                model.addAttribute("amtMap", amtMap);
+            }
+
+            if (bgt_no != null) {
+                bgtListSeq = budgetService.getBgtListSeq(bgt_no, bsnss_year);
+                status = statusUpdateService.getStatus(bgt_no, bsnss_year);
+                newStatus = bgtInfo.getString("newStatus");
+                if(newStatus.equals("")) {
+                    newStatus = status;
+                }
+                StepEnum stepEnum = StepEnum.valueOf(CmFunction.makeStepStatus(account_item, newStatus));
+                stepMap = stepEnum.getMap();
+                stepMap.put("reqIsDrop", false);
+                if(bgtInfo.get("is_stop").toString().equals("true")) {
+                    stepMap.put("statusNm", "운영중지");
+                }
+
+                if ((userPrivDto != null && (userPrivDto.getIsBo() || userPrivDto.getIsBm())) || (boolean) session.getAttribute("s_isAdmin")) { // 예산운영자, 예산관리자는 모든 status 에서 등록 가능
+                    stepMap.put("regType", "reg");
+                    stepMap.put("adminCheck", true);
+
+                    isAdmin = true;
+                } else {
+                    stepMap.put("adminCheck", false);
+                }
+
+                if (this.stepAuthCheck(account_item, menu_cd, bgtListSeq, (String) stepMap.get("auth"), request)) { //등록 및 다음단계로 갈 수 있는 버튼을 누를 수 있는지 권한
+                    stepMap.put("stepEnumCheck", true);
+                } else {
+                    stepMap.put("stepEnumCheck", false);
+                }
+
+                if (this.stepAuthCheck(account_item, menu_cd, bgtListSeq, "isPm", request) && "view".equals(stepMap.getString("regType"))
+                    && !("a_aad".equals(stepMap.getString("enumNm")) || "fs_aav".equals(stepMap.getString("enumNm")) || "i_aav".equals(stepMap.getString("enumNm")))) {
+                    stepMap.put("isTempAuth", true);
+                } else {
+                    stepMap.put("isTempAuth", userPrivDto == null ? (boolean) session.getAttribute("s_isAdmin") : userPrivDto.getIsBm());
+                }
+
+                isTransfer = budgetItemService.getBgtIsTranfer(bgt_no);
+                model.addAttribute("isTransfer", isTransfer);
+
+                // 계획 + 이월 항목은 등록 항목 제한
+                if("p".equals(menu_cd) && !isAdmin) {
+                    isTransferSaveLimit = isTransfer;
+                }
+                model.addAttribute("isTransferSaveLimit", isTransferSaveLimit);
+
+                if("a".equals(account_item) && "p".equals(menu_cd) && (bgt_no == null || bgt_no.startsWith("P"))) {
+                    CmMap<String, Object> dtoMap = new CmMap<>();
+                    dtoMap.put("bgtListSeq", bgtListSeq);
+
+                    CmMap<String, Object> planReqInfo = planService.getPlanReqInfo(dtoMap);
+
+                    if(planReqInfo != null) {
+                        int reqSeq = planReqInfo.getInt("seq");
+                        String reqStatus = planReqInfo.getString("status");
+                        CmMap<String, Object> reqStatusMap = planService.getReqStatus(reqSeq, reqStatus);
+
+                        model.addAttribute("planReqInfo", planReqInfo);
+                        model.addAttribute("reqStatusMap", reqStatusMap);
+
+                        if("true".equals(planReqInfo.getString("is_drop"))) {
+                            stepMap.put("reqIsDrop", true);
+                            stepMap.put("regType", "view");
+                            stepMap.put("stepEnumCheck", false);
+                        }
+                    }
+
+                    if(bgt_no != null) {
+                        dtoMap = new CmMap<>();
+                        dtoMap.put("bgtNo", bgt_no);
+                        CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(dtoMap);
+
+                        if(planAllocInfo != null) {
+                            model.addAttribute("planAllocInfo", planAllocInfo);
+                        }
+                    }
+
+                } else if ("a".equals(account_item) && "b".equals(menu_cd) && bgtInfo.get("transfer_plan_bgt_no") != null) {
+                    CmMap<String, Object> dtoMap = new CmMap<>();
+                    dtoMap.put("bgtNo", bgtInfo.get("transfer_plan_bgt_no"));
+
+                    CmMap<String, Object> planReqInfo = planService.getPlanReqInfo(dtoMap);
+                    CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(dtoMap);
+
+                    if(planReqInfo != null) {
+                        model.addAttribute("planReqInfo", planReqInfo);
+                    }
+
+                    if(planAllocInfo != null) {
+                        /**
+                         * 2023.09.19 예산운영>P코드로 생성된 A코드 예산항목의 잠정예산 정의 변경
+                         * P->A로 생성된 항목의 잠정예산 = 예정계약금액 + 계약(투자)금액  (현재 경영주기에 해당하는 계약금액만 합산)
+                         * 배정예산관리(신규투자)의 잠정예산과 값 동일
+                         * 예산상세에서 잠정예산이 보이는 경우는 P->A로 생성한 경우
+                         */
+
+                        // 월별 금액 조회 위해 년/월 세팅
+                        dtoMap = new CmMap<>();
+                        List<String> yearList = bgtMngService.byInfoMonthYearList(bsnss_year);
+                        dtoMap.put("yearList", CmFunction.getYearList(yearList));
+                        dtoMap.put("byMonthYearList", yearList);
+                        dtoMap.put("bgtNo", bgt_no);
+
+                        planAllocInfo.put("amt", allocService.getPrBgtAmt(dtoMap)); // P->A인 신규투자 예산항목의 경우에만 잠정예산 재세팅
+                        model.addAttribute("planAllocInfo", planAllocInfo);
+                    }
+                }
+
+                // 집행계획금액,계약정보 등록/수정 가능 권한
+                authMap = this.authCheck(bgtListSeq, request);
+
+                // cntrcAddPossible 계약정보 추가 가능 상태
+                // 최종항목점검중, 팀장승인중, 최종사용확정완료 이후 (최종사용확정완료 포함)
+                if(authMap.getString("cntrcRegAuth").equals("true")) {
+                    if(stepEnum.name().equals("a_aad") || stepEnum.name().equals("fs_aav") || stepEnum.name().equals("i_aav")) { // 최종항목점검 중
+                        authMap.put("cntrcAddPossible", true);
+                    } else if(stepEnum.name().equals("a_brd") || stepEnum.name().equals("fs_brd") || stepEnum.name().equals("i_brd")) { // 팀장승인 중
+                        authMap.put("cntrcAddPossible", true);
+                    } else {
+                        String makeStatusTemp = account_item + "_afd";
+                        if(account_item.equals("f") || account_item.equals("s")) {
+                            makeStatusTemp = "fs_afd";
+                        }
+                        authMap.put("cntrcAddPossible", stepEnum.valueOf(stepEnum.name()).isEqualOrNext(makeStatusTemp)); // 최종사용확정완료 이후 (최종사용확정완료 포함)
+                    }
+                }
+
+                // enpRegPossble 집행계획금액 등록 가능 상태
+                // 운영 + 신규투자/지급수수료/보안용역수수료 + 팀장승인중 이후 상태 (팀장승인중 포함)
+                // 계획 + 신규투자 + PM확정 이전 상태 (PM확정 제외)
+                // 계획 + 지급수수료/보안용역수수료
+                if(menu_cd.equals("b")) {
+                    if(account_item.equals("a")) {
+                        enpRegPossble = stepEnum.valueOf(stepEnum.name()).isNext("a_brd");
+                        atnriNextCheck = stepEnum.valueOf(stepEnum.name()).isNext("a_aav");
+                        brdNextCheck = stepEnum.valueOf(stepEnum.name()).isNext("a_brd");
+                    } else if (account_item.equals("f") || account_item.equals("s")) {
+                        enpRegPossble = stepEnum.valueOf(stepEnum.name()).isEqualOrNext("fs_brd");
+                    }
+                } else {
+                    if(account_item.equals("a")) {
+                        enpRegPossble = stepEnum.valueOf(stepEnum.name()).isBefore("a_ppd");
+                    } else if (account_item.equals("f") || account_item.equals("s")) {
+                        enpRegPossble = true;
+                    }
+                }
+
+
+                String cntrcType = String.valueOf(bgtInfo.get("bgt_cntrc_type"));
+                if ("품의작성".equals(stepMap.get("buttonNm")) && !cntrcType.equals("d")) { // 세부(계약형태)건의 경우 제외
+                    // 품의담당자인지 체크
+                    boolean isApprovalManager = budgetService.getBgtApproValManagerCheck(bgt_no, (String) session.getAttribute("s_memId"));
+                    stepMap.put("isApprovalManager", isApprovalManager);
+
+                    // 현재 품의 작성 가능 여부 체크1 - 작성 된 품의가 없을 경우 품의작성 버튼 노출(isApprovalCreated false일 경우만 노출)
+                    boolean isApprovalCreated = budgetService.getBgtApprovalCreatedCheck(bgt_no);
+
+                    // 현재 품의 작성 가능 여부 체크2 - 품의작성 단계 이며, 기존에 작성 된 품의가 없을 경우 -> 품의작성 시 필요한 필수값들 다 있는지 체크. 한개라도 없을 경우 이하 로직 타지 않음, 품의작성 버튼 노출x, 알람 띄우기
+                    boolean hasApprovalRequiredValues = true;
+                    if (!isApprovalCreated) {
+                        // 투자시작일 / 계약시작일 chk
+                        if (account_item.equals("a")) {
+                            if (bgtInfo.get("inv_start_dt") == null) { hasApprovalRequiredValues = false; }
+                            // 약정항목 chk
+                            if (bgtInfo.get("contract_item") == null) { hasApprovalRequiredValues = false;}
+                            // 투자코드 chk
+                            if (bgtInfo.get("inv_wbs_cd") == null) { hasApprovalRequiredValues = false;}
+                        } else {
+                            if (bgtInfo.get("cntrc_start_dt") == null) { hasApprovalRequiredValues = false;}
+                        }
+                        // 팀명 chk
+                        if (bgtInfo.get("team_nm") == null) { hasApprovalRequiredValues = false;}
+                        // 담당자명 chk
+                        if (bgtInfo.get("mem_nm") == null) { hasApprovalRequiredValues = false;}
+                        // 코스트센터 chk
+                        if (bgtInfo.get("cost_center") == null) { hasApprovalRequiredValues = false;}
+                        // 마스터코드 chk
+                        if (bgtInfo.get("master_cd") == null) { hasApprovalRequiredValues = false;}
+                        // 비용유형 chk
+                        if (bgtInfo.get("cost_type") == null) { hasApprovalRequiredValues = false;}
+                        // 구매방식 chk
+                        if (bgtInfo.get("prchs_way") == null) { hasApprovalRequiredValues = false;}
+                    }
+                    model.addAttribute("hasApprovalRequiredValues", hasApprovalRequiredValues);
+
+                    if (hasApprovalRequiredValues) {
+                        // 현재 품의 작성 가능 여부 체크3 - 계약시작일/투자시작일(신규투자) 월 -1개월부터 노출 되어야 함(isApprovalPeriod true일 경우만 노출)
+                        boolean isApprovalPeriod = false;
+                        SimpleDateFormat dateFormat = new SimpleDateFormat ("yyyy-MM-dd");
+                        Date cntrcStartDt = (Date) bgtInfo.get("cntrc_start_dt");
+                        Date invStartDt = (Date) bgtInfo.get("inv_start_dt");
+                        Date startDate = null;
+
+                        if (cntrcStartDt != null) {
+                            startDate = dateFormat.parse(CmFunction.getDateToString(cntrcStartDt, "yyyy-MM-dd"));
+                        } else if (invStartDt != null) {
+                            startDate = dateFormat.parse(CmFunction.getDateToString(invStartDt, "yyyy-MM-dd"));
+                        }
+                        String startDt = CmFunction.getDateToString(startDate, "");
+
+                        int nowMonth = Integer.parseInt(now.substring(4,6));
+                        int nowYear = Integer.parseInt(now.substring(0,4));
+                        int compareMonth = 0;
+                        int compareYear = nowYear;
+                        if (nowMonth == 12) {
+                            compareYear = compareYear +1;
+                            compareMonth = 1;
+                        } else {
+                            compareMonth = nowMonth +1;
+                        }
+
+                        String compareDate = compareYear + (compareMonth<10?"0"+compareMonth:String.valueOf(compareMonth)) + now.substring(6); // 현재 +1달
+                        if (Integer.parseInt(startDt) <= Integer.parseInt(compareDate)) { // 현재 +1달(compareDate) 보다 시작일(startDt)이 같거나 작아야 함
+                            isApprovalPeriod = true;
+                        }
+
+                        if (!isApprovalCreated && isApprovalPeriod) {
+                            model.addAttribute("isApprovalBtnExpose", true);
+
+                            Map<String, Object> byInfo = settingService.getByInfoDetail(bsnss_year);
+                            int first_year = Integer.parseInt(String.valueOf(byInfo.get("start_dt")).substring(0,4));
+                            int last_year = Integer.parseInt(String.valueOf(byInfo.get("end_dt")).substring(0,4));
+                            List<String> ymList = CmFunction.getDateGapMonthly(String.valueOf(byInfo.get("start_dt")), String.valueOf(byInfo.get("end_dt")), "yyyy-MM", "yyyyMM");
+                            List<Integer> yearList = new ArrayList<>();
+                            for (int c=first_year; c<=last_year; c++) {
+                                yearList.add(c);
+                            }
+
+                            // 품의작성 버튼 노출 가능 하고 필수값이 모두 있을 경우, 담당자 혹은 어드민/예산관리자 권한 일때만 amt에 정보 새로 insert or update 한다.
+                            if (isApprovalManager || (boolean) session.getAttribute("s_isAdmin") || (userPrivDto == null ? false : userPrivDto.getIsBm())) {
+                                // 계약금액 리체크(총 금액이 아닌, 품의작성이 안된 금액만 가져와야 함 - status 0 / getBgtCntrcDataList)
+                                long cntrcAmt = 0; // 총 계약금액(신규투자의 경우 총 투자금액 / 지급수수료는 BY상관없이 계약/정보 탭 에서 진행 안된 품의의 계약금액 합산)
+                                long cntrcByAmtTotal = 0; // 전체 계약 금액 중 by에 해당 하는 계약금액의 합계 금액 - 품의가 여러건 일 경우 합산을 위함 23.03.15
+                                CmMap<String, Object> cntrcMap = new CmMap<String, Object>();
+                                cntrcMap.put("bgtListSeq", Integer.parseInt(bgtInfo.get("bgt_list_seq").toString()));
+                                cntrcMap.put("bgtNo", bgtInfo.get("bgtNo").toString());
+                                cntrcMap.put("bsnssYear", bgtInfo.get("bsnss_year").toString());
+                                List<CmMap<String, Object>> BgtCntrcDataList = planService.getBgtCntrcDataList(cntrcMap);
+                                for (CmMap<String, Object> i : BgtCntrcDataList) {
+                                    String approvalStatus = String.valueOf(i.get("status"));
+                                    if (approvalStatus.equals("0")) {
+                                        long amt = Long.parseLong(String.valueOf(i.get("total_cntrc_amt")));
+                                        boolean is_plan = (boolean) i.get("is_plan");
+                                        if(!is_plan){
+                                            cntrcAmt = cntrcAmt + amt;
+                                        }
+
+                                        // 집행할 금액(품의진행 할 금액) ? 전체 계약 금액 중 by에 해당 하는 계약금액의 합계 금액 가져옴
+                                        int cntrcSeq = (int) i.get("cntrc_seq");
+                                        long cntrcByAmt = budgetService.getcntrcByTotalAmt(cntrcSeq, ymList, yearList);
+                                        cntrcByAmtTotal = cntrcByAmtTotal + cntrcByAmt;
+                                    }
+                                }
+
+                                LinkedHashMap<String, Object> monthlyEnfrc = (LinkedHashMap<String, Object>) bgtInfo.get("monthlyEnfrc");
+                                //CmMap<String, Object> asMap = (CmMap<String, Object>) monthlyEnfrc.get("배정예산");
+                                CmMap<String, Object> asMap = (CmMap<String, Object>) monthlyEnfrc.get("as");
+                                long asAmt = asMap==null?0:Long.parseLong(String.valueOf(asMap.get("total")));
+                                //CmMap<String, Object> enMap = (CmMap<String, Object>) monthlyEnfrc.get("집행금액");
+                                CmMap<String, Object> enMap = (CmMap<String, Object>) monthlyEnfrc.get("en");
+                                long enAmt = enMap==null?0:Long.parseLong(String.valueOf(enMap.get("total")));
+
+                                CmMap<String, Object> enpMap = (CmMap<String, Object>) monthlyEnfrc.get("enp");
+                                long enpAmt = enpMap==null?0:Long.parseLong(String.valueOf(enpMap.get("total")));
+
+                                CmMap<String, Object> cnivMap = (CmMap<String, Object>) monthlyEnfrc.get("cniv");
+                                long cnivAmt = cnivMap==null?0:Long.parseLong(String.valueOf(cnivMap.get("total")));
+
+                                CmMap<String,Object> cntrc = budgetService.getBgtCntrcInfo(bgtListSeq);
+                                List<CmMap<String,Object>> cntrcList = (List<CmMap<String, Object>>) cntrc.get("cntrcList");
+                                long completeCntrcAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no); //완료되지 않은 품의의 계약금액
+                                /*for(int i = 0 ; i < cntrcList.size() ; i++){
+                                    if(cntrcList.get(i).getString("status").equals("3")){
+                                        completeCntrcAmt += cntrcList.get(i).getLong("total_cntrc_amt");
+                                    }
+                                }
+                                long cntrcEnfrcTotalAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no);*/
+
+                                CmMap<String, Object> approvalAmtMap = new CmMap<>();
+                                approvalAmtMap.put("bgt_no", bgt_no); // 예산항목번호
+                                approvalAmtMap.put("account_code", commonService.getCodeInfo(account_item, "account_item").get("cd_nm")); // 계정과목(계정항목)
+
+                                //approvalAmtMap.put("execute_amt", enpAmt); // 당기 BY집행금액 (집행 계획 금액) 23./08.18 수정
+                                approvalAmtMap.put("execute_amt", budgetService.getcntrcByTotalAmt(budgetService.getExecuteAmtCntrcSeq(bgt_no), ymList, yearList)); // 당기 BY집행금액  23.10.04 수정
+
+                                approvalAmtMap.put("team_nm", bgtInfo.get("team_nm")); // 팀명
+                                approvalAmtMap.put("user_nm", bgtInfo.get("mem_nm")); // 담당자명
+                                approvalAmtMap.put("cost_center", bgtInfo.get("cost_center")); // 코스트센터
+                                approvalAmtMap.put("cost_center_nm", bgtInfo.get("cost_center_nm")); // 코스트센터 명
+                                approvalAmtMap.put("master_cd", bgtInfo.get("master_cd")); // 마스터코드
+                                approvalAmtMap.put("master_cd_nm", bgtInfo.get("master_code_nm")); // 마스터코드 명
+                                approvalAmtMap.put("budget_type", bgtInfo.get("cost_type")); // 유형(비용유형)
+                                //역치환 추가
+                                String budget_type_nm = bgtInfo.get("cost_type_grp_nm") + " > " + bgtInfo.get("cost_type_nm");
+                                budget_type_nm = budget_type_nm.replaceAll("&#47;", "/");
+                                budget_type_nm = budget_type_nm.replaceAll("&lt;", "<").replaceAll("&gt;", ">");
+                                budget_type_nm = budget_type_nm.replaceAll("&#40;", "\\(").replaceAll("&#41;", "\\)");
+                                budget_type_nm = budget_type_nm.replaceAll("&#39;", "'");
+                                budget_type_nm = budget_type_nm.replaceAll("&quot;", "\"");
+                                approvalAmtMap.put("budget_type_nm", budget_type_nm); // 유형(비용유형) 내용
+                                approvalAmtMap.put("inv_wbs_cd", bgtInfo.get("inv_wbs_cd")); // 투자코드
+                                approvalAmtMap.put("prchs_way", bgtInfo.get("prchs_way").equals("d")?"F1":"P2"); // 집행구분 = 구매방식(간접:i->P2/직접:d->F1)
+                                approvalAmtMap.put("contract_item", bgtInfo.get("contract_item")); // 약정항목 - 투자코드 lvl1,2(신규투자 외 null로 들어감)
+
+                                String approvalUrl = "";
+                                if (account_item.equals("a")) { // 신규투자 분기 처리
+                                    approvalUrl = APPROVAL_INV_URL+bgt_no;
+                                    approvalAmtMap.put("approval_type", "100"); // 품의구분(100:투자집행,200:일반품의)
+//                                    long totalAmt = Long.parseLong(String.valueOf(bgtInfo.get("total_amt")));
+                                    approvalAmtMap.put("budget_amt", cntrcAmt); // 항목예산 - 총 계약금액(총 투자금액). 신규투자는 품의 여러개가 안되기 때문에 총 계약금액으로 가져감
+                                    approvalAmtMap.put("contract_amt", 0); // 계약금액 - 0
+                                    approvalAmtMap.put("inv_start_dt", bgtInfo.get("inv_start_dt").toString().substring(0,4)+bgtInfo.get("inv_start_dt").toString().substring(5,7)); // 예정월 - 투자시작일(YYYYMM)형태로 전달
+                                    long diffAmt = cntrcAmt - cntrcByAmtTotal; // 총투자(계약)금액 -  당기BY집행금액(계획)(BY계약금액) - 23.04.17 수정
+                                    approvalAmtMap.put("diff_amt", diffAmt);
+                                } else {
+                                    approvalUrl = APPROVAL_URL+bgt_no;
+                                    approvalAmtMap.put("approval_type", "200"); // 품의구분(100:투자집행,200:일반품의)
+                                    long budgetAmt = asAmt - completeCntrcAmt; // 배정예산 - 기계약금액  23.08.09 변경                             (구) 배정예산 - 집행금액
+                                    approvalAmtMap.put("budget_amt", budgetAmt); // 항목예산 - 해당 BY 배정예산 -> 배정(잔여)예산: 배정예산-집행금액 23.03.06 품의 정보 변경
+                                    approvalAmtMap.put("contract_amt", cntrcAmt); // 계약금액 - 총 계약금액x, 품의 작성 안된 계약금액의 합(계약건이 2건 이상일 경우 루프 돌려서 합산 된 금액 가져옴)
+                                    long diffAmt = budgetAmt - cntrcByAmtTotal; // 과부족 : 배정(잔여)예산 - 당기BY집행금액(계획) 23.04.17 수정
+                                    approvalAmtMap.put("diff_amt", diffAmt>0?"여유":diffAmt==0?"일치":"부족"); // 0보다 크면 여유, 0이면 일치, 0보다 작으면 부족
+                                }
+                                model.addAttribute("approvalUrl", approvalUrl);
+
+                                // if_approval_amt insert & update
+                                budgetService.updateApprovalAmtInfo(approvalAmtMap);
+                            }
+
+                        } else {
+                            model.addAttribute("isApprovalBtnExpose", false);
+                        }
+                    } else {
+                        model.addAttribute("isApprovalBtnExpose", false);
+                    }
+                }
