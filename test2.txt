@@ -1,3 +1,10 @@
+    /**
+     * @apiNote 예산항목 상세 수정 api (ing)
+     * @param account_item account_item
+     * @param menu_cd  p : 계획, b : 운영
+     * @param request bgt_no : 예산관리번호, bsnss_year : 경영주기
+     * @param paramMap : [bgt_no, bsnss_year, reportId(항상x)]
+     */
     @RequestMapping(value = "/test/{account_item}/{menu_cd}/view_popup.do", method = RequestMethod.GET)
     public String new_view_popup(@RequestParam Map<String, Object> paramMap, Model model, HttpServletRequest request
             , @PathVariable(value = "account_item") String account_item, @PathVariable(value = "menu_cd") String menu_cd) {
@@ -74,6 +81,7 @@
                 if ((userPrivDto != null && (userPrivDto.getIsBo() || userPrivDto.getIsBm())) || (boolean) session.getAttribute("s_isAdmin")) { // 예산운영자, 예산관리자는 모든 status 에서 등록 가능
                     stepMap.put("regType", "reg");
                     stepMap.put("adminCheck", true);
+                    logger.debug(":::: 예산운영자, 예산관리자는 모든 status 에서 등록 가능");
 
                     isAdmin = true;
                 } else {
@@ -109,6 +117,8 @@
                     CmMap<String, Object> planReqInfo = planService.getPlanReqInfo(dtoMap);
 
                     if(planReqInfo != null) {
+                        logger.info("planReqInfo ::: " + planReqInfo);
+
                         int reqSeq = planReqInfo.getInt("seq");
                         String reqStatus = planReqInfo.getString("status");
                         CmMap<String, Object> reqStatusMap = planService.getReqStatus(reqSeq, reqStatus);
@@ -129,6 +139,7 @@
                         CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(dtoMap);
 
                         if(planAllocInfo != null) {
+                            logger.info("planAllocInfo ::: " + planAllocInfo);
                             model.addAttribute("planAllocInfo", planAllocInfo);
                         }
                     }
@@ -141,6 +152,7 @@
                     CmMap<String, Object> planAllocInfo = budgetItemService.planAllocInfo(dtoMap);
 
                     if(planReqInfo != null) {
+                        logger.info("planReqInfo ::: " + planReqInfo);
                         model.addAttribute("planReqInfo", planReqInfo);
                     }
 
@@ -160,6 +172,7 @@
                         dtoMap.put("bgtNo", bgt_no);
 
                         planAllocInfo.put("amt", allocService.getPrBgtAmt(dtoMap)); // P->A인 신규투자 예산항목의 경우에만 잠정예산 재세팅
+                        logger.info("planAllocInfo ::: " + planAllocInfo);
                         model.addAttribute("planAllocInfo", planAllocInfo);
                     }
                 }
@@ -218,26 +231,26 @@
                     if (!isApprovalCreated) {
                         // 투자시작일 / 계약시작일 chk
                         if (account_item.equals("a")) {
-                            if (bgtInfo.get("inv_start_dt") == null) { hasApprovalRequiredValues = false; }
+                            if (bgtInfo.get("inv_start_dt") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 투자시작일(inv_start_dt) 없음 @@@");}
                             // 약정항목 chk
-                            if (bgtInfo.get("contract_item") == null) { hasApprovalRequiredValues = false;}
+                            if (bgtInfo.get("contract_item") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 약정항목(inv_prps as contract_item) 없음 @@@");}
                             // 투자코드 chk
-                            if (bgtInfo.get("inv_wbs_cd") == null) { hasApprovalRequiredValues = false;}
+                            if (bgtInfo.get("inv_wbs_cd") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 투자코드(inv_wbs_cd) 없음 @@@");}
                         } else {
-                            if (bgtInfo.get("cntrc_start_dt") == null) { hasApprovalRequiredValues = false;}
+                            if (bgtInfo.get("cntrc_start_dt") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 계약시작일(cntrc_start_dt) 없음 @@@");}
                         }
                         // 팀명 chk
-                        if (bgtInfo.get("team_nm") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("team_nm") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 팀명(team_nm) 없음 @@@");}
                         // 담당자명 chk
-                        if (bgtInfo.get("mem_nm") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("mem_nm") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 담당자명(mem_nm) 없음 @@@");}
                         // 코스트센터 chk
-                        if (bgtInfo.get("cost_center") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("cost_center") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 코스트센터(cost_center) 없음 @@@");}
                         // 마스터코드 chk
-                        if (bgtInfo.get("master_cd") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("master_cd") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 마스터코드(master_cd) 없음 @@@");}
                         // 비용유형 chk
-                        if (bgtInfo.get("cost_type") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("cost_type") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 비용유형(cost_type) 없음 @@@");}
                         // 구매방식 chk
-                        if (bgtInfo.get("prchs_way") == null) { hasApprovalRequiredValues = false;}
+                        if (bgtInfo.get("prchs_way") == null) { hasApprovalRequiredValues = false; logger.info("@@@ 구매방식(prchs_way) 없음 @@@");}
                     }
                     model.addAttribute("hasApprovalRequiredValues", hasApprovalRequiredValues);
 
@@ -327,12 +340,6 @@
                                 CmMap<String,Object> cntrc = budgetService.getBgtCntrcInfo(bgtListSeq);
                                 List<CmMap<String,Object>> cntrcList = (List<CmMap<String, Object>>) cntrc.get("cntrcList");
                                 long completeCntrcAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no); //완료되지 않은 품의의 계약금액
-                                /*for(int i = 0 ; i < cntrcList.size() ; i++){
-                                    if(cntrcList.get(i).getString("status").equals("3")){
-                                        completeCntrcAmt += cntrcList.get(i).getLong("total_cntrc_amt");
-                                    }
-                                }
-                                long cntrcEnfrcTotalAmt = budgetService.getCntrcEnfrctotalAmt(bsnss_year,bgt_no);*/
 
                                 CmMap<String, Object> approvalAmtMap = new CmMap<>();
                                 approvalAmtMap.put("bgt_no", bgt_no); // 예산항목번호
@@ -392,3 +399,162 @@
                         model.addAttribute("isApprovalBtnExpose", false);
                     }
                 }
+
+                // 자산번호 세팅
+                // 2023.07.11 자산번호 수정 가능한 상태 추가 : 자산번호등록중 ~ 집행계획등록마감
+                String stepNm = (String) stepMap.get("enumNm");
+                String[] statusArr = {"a_aav", "a_atnri", "a_aad", "a_afi", "a_afd", "a_enreg", "a_encfm", "a_encls"};
+                boolean canModifyAsset = false;
+
+                for(String st : statusArr){
+                    if(st.equals(stepNm)){
+                        canModifyAsset = true;
+                        break;
+                    }
+                }
+                if (canModifyAsset) { // statusNum : 자산번호 등록 중
+                    // 임시자산번호등록 버튼 노출 여부 확인 -> true : 노출
+                    if ((userPrivDto != null && (userPrivDto.getIsBo() || userPrivDto.getIsBm())) || (boolean) session.getAttribute("s_isAdmin")) {
+                        astAuth = true;
+                    }
+                }
+
+                // 2023.07.19 자산번호 등록중 상태이면서 PM/팀장 권한인 경우 저장되어있는 자산번호 노출 X
+                if(!("a_aav".equals(stepNm) && (userPrivDto.getIsPm() || userPrivDto.getIsTm()))){
+                    model.addAttribute("astNoArr", bgtInfo.get("ast_no_arr"));
+                    String[] ast_no_arr_txt = (String[]) bgtInfo.get("ast_no_arr");
+                    model.addAttribute("astNoArrTxt", Arrays.toString(ast_no_arr_txt));
+                }
+
+                model.addAttribute("astAuth", astAuth);
+                model.addAttribute("stepEnum", stepMap);
+                model.addAttribute("stepEnumName", stepEnum.name());
+                model.addAttribute("status", status);
+                model.addAttribute("authMap", authMap);
+
+                if (status.equals("afd") || enpRegPossble) { // afd도 건 이유는 new ito 때문에!
+                    CmMap<String, Object> enfrcMap = budgetService.enfrcMap(bgt_no, bgtListSeq, session, bsnss_year);
+                    model.addAttribute("enfrcMap", enfrcMap);
+                    if(account_item.equals("i")) { // NEW ITO
+                        model.addAttribute("isCmpEmpno", budgetService.isCmpEmpno(bgtListSeq, (String) session.getAttribute("s_memId"))); // 업체담당자 여부 체크
+                        model.addAttribute("newItoClosedStatus", budgetService.getBgtNewItoMonthClosedStatus(bgtListSeq, now.substring(0,6))); // 해당 예산항목의 월별 마감 상태 (reg = 업체담당자 등록, closed = 담당 PM 마감)
+                    }
+                }
+
+                // NEW ITO
+                if(account_item.equals("i")) {
+                    // 당월 추가비용(ARC-RRC) 입력 가능 여부
+                    model.addAttribute("arcRrcDisabled", budgetService.arcRrcDisabled(bgt_no, bgtListSeq, bsnss_year));
+                    // 증빙자료 or 메모 첨부한 연월
+                    model.addAttribute("newItoFileMemoExistYmList", budgetService.getNewItoFileMemoExistYmList(bgtListSeq, "newito_month"));
+                    // SAP, Retail, POS 항목은 배분기준관리 reg_type = view
+                    model.addAttribute("distribution_type", CmFunction.ITO_AREA_AMS.containsKey(bgt_no) ? "view" : "");
+                }
+
+                model.addAttribute("tagList", commonService.getTagList("bgt_list_data", bgtListSeq));
+                model.addAttribute("changePrchsWay", budgetService.changePrchsWay(bgt_no));
+            }
+
+            //기본정보 -> 투자목적 셀렉트박스 항목조회
+            List<CmMap<String, Object>> InvPrpsList = commonService.getCodeInfoInvList(bsnss_year);
+
+            if(menu_cd.equals("p")) { // 계획
+                model.addAttribute("plan_schedule", planService.planSchedule(bsnss_year, null));//예산운영일정
+                InvPrpsList.removeIf(item -> "migration".equals(item.getString("sub_nm")));
+            }
+            model.addAttribute("InvPrpsList", InvPrpsList);
+            model.addAttribute("chargebackVo", budgetService.getBgtCbInfo((List<String>) bgtInfo.get("monthly"), bgtListSeq, 0, account_item, status, (List<String>) bgtInfo.get("itsm_list")));
+            model.addAttribute("cntrcApprovalVo", budgetService.getBgtCntrcInfo(bgtListSeq));
+//            model.addAttribute("calcPeriodList", commonService.getCodeInfoList("calc_period"));
+            model.addAttribute("prchsWayList", commonService.getCodeInfoList("prchs_way"));
+//            model.addAttribute("markupList", commonService.getCodeInfoList("markup"));
+            model.addAttribute("BgtCntrcTypeList", commonService.getCodeInfoList("bgt_cntrc_type"));
+            model.addAttribute("isBm", userPrivDto == null ? false : userPrivDto.getIsBm());
+            model.addAttribute("isBo", userPrivDto == null ? false : userPrivDto.getIsBo());
+            model.addAttribute("isPm", userPrivDto == null ? false : userPrivDto.getIsPm());
+            model.addAttribute("isTm", userPrivDto == null ? false : userPrivDto.getIsTm());
+            model.addAttribute("isAdmin", session.getAttribute("s_isAdmin"));
+            model.addAttribute("bgtVo", bgtInfo);
+
+        } catch (Exception e) {
+            logger.error("exception", e);
+        }
+
+        model.addAttribute("classNm", BgtEnum.valueOf(account_item).getTitle());
+        model.addAttribute("accountItem", accountItemMap);
+        model.addAttribute("LoginMap", LoginMap);
+        model.addAttribute("bgtListSeq", bgtListSeq);
+        model.addAttribute("bgtNo", bgt_no);
+        model.addAttribute("status", status);
+        model.addAttribute("priv", session.getAttribute("s_userPrivInfo"));
+        model.addAttribute("isMigration", bgt_no == null ? false : budgetService.isMigration(bgt_no, bsnss_year));
+        model.addAttribute("astAuth", astAuth);
+        model.addAttribute("btnNowBy", (bgt_no == null || bsnss_year.equals(commonService.getBudgetYear())) ? null : budgetItemService.getNowBsnssYear(bgt_no, commonService.getBudgetYear()));
+        model.addAttribute("btnBeforeBy", bgt_no == null ? null : budgetItemService.getBeforeBsnssYear(bgt_no, bsnss_year));
+
+
+        CmMap<String, CmMap<String, Object>> wrapperMap = new CmMap<>();
+        CmMap<String, Object> currentStepMap = null;
+
+        String currentStep = account_item + "_" + status;
+        for (ShowByItemEnum showByItemEnum : ShowByItemEnum.values()) {
+            CmMap<String, Object> sMap = showByItemEnum.getMap();
+            wrapperMap.put(sMap.get("enumNm"), sMap);
+        }
+
+        String defaultType = "";
+        if (stepMap != null) {
+            boolean stepEnumCheck = (boolean) stepMap.get("stepEnumCheck");
+            String regType = (String) stepMap.get("regType");
+
+            if (stepEnumCheck) {
+                currentStepMap = (CmMap<String, Object>) wrapperMap.get(currentStep);
+                if (currentStepMap == null) {   // 해당하는 step이 없다면
+                    defaultType = regType;
+                }
+            } else {
+                defaultType = "view";
+            }
+
+            if (isMigration && stepEnumCheck) {
+                defaultType = "reg";
+            }
+        } else { // bgt_no = null(초기 등록 화면)
+            defaultType = "reg";
+        }
+
+        if(userPrivDto != null && userPrivDto.getIsBm()){ // 예산관리자는 모든 status 에서 등록 가능
+            currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_reg");
+        }
+
+        if (currentStepMap == null) {
+            if ("reg".equals(defaultType)) {
+                currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_reg");
+            } else {
+                currentStepMap = (CmMap<String, Object>) wrapperMap.get("default_view");
+            }
+        }
+
+        model.addAttribute("isView", currentStepMap);
+        model.addAttribute("account_item", account_item);
+        model.addAttribute("enpRegPossble" ,enpRegPossble);
+        model.addAttribute("atnriNextCheck" , atnriNextCheck);
+        model.addAttribute("brdNextCheck" , brdNextCheck);
+        if(paramMap.get("reportId") != null && !"".equals(paramMap.get("reportId"))) {
+            model.addAttribute("reportId", (String) paramMap.get("reportId"));
+        }
+        model.addAttribute("menuCd" , menu_cd);
+
+
+        //2023.09.01 품의작성 중 단계에서 품의작성 할 계약건의 운영여부가 '계획'인 경우 품의작성 버튼 비활성 처리
+        boolean approvalFlag = false;
+        if(status != null){
+            if(status.equals("aad") || status.equals("bpcn")){
+                approvalFlag = budgetService.checkApprovalFlag(bgt_no);
+            }
+        }
+
+        model.addAttribute("approvalFlag" , approvalFlag);
+
+        return "/budget/item_view";
+    }
