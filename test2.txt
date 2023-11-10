@@ -1,228 +1,243 @@
-@RequestMapping(value = "/test/{account_item}/{menu_cd}/view_popup.do", method = RequestMethod.GET)
-public String new_view_popup(@RequestParam Map<String, Object> paramMap, Model model, HttpServletRequest request
-        , @PathVariable(value = "account_item") String account_item, @PathVariable(value = "menu_cd") String menu_cd) {
-    HttpSession session = request.getSession();
-    UserAuthChecker userAuthChecker = new UserAuthChecker(session);
-    User userInfo = (User) session.getAttribute("s_user");
-    BudgetHandler budgetHandler = new BudgetHandler(menu_cd, account_item);
-    if(userAuthChecker.isAuth("isOnlyDmIm")){
-        return "redirect:/common/redirectAlert_popup.do";
+당신은 FAANG 회사의 선임 엔지니어인 척할 것입니다.
+성능과 유지보수성에 주의를 기울여 다음 코드를 검토하세요.
+스프링 서비스 getBgtInfo 의 일부와 내부의 서비스 메서드 두개인데
+유사한 점을 찾고 공통화 가능한 부분들을 디자인 패턴을 적용하든 공통메서드로 분리하든 java8의 문법등을 활용해서
+유지보수성을 향상시킬 수 있도록 리팩토링을 진행해줘
+public CmMap<String, Object> getBgtInfo(){
+    CmMap<String, Object> detailMap;
+    if(budgetHandler.isAccountI()) {
+        detailMap = budgetService.getBgtInfoDetail_i(bgt_no, bsnss_year, bgt_list_seq, monthly, startDt, endDt);
+    } else if(budgetHandler.isAccountFOrS()){ // 지급수수료, 보안용역수수료
+        detailMap = budgetService.getBgtInfoDetail_fs(bgt_no, bsnss_year, monthly, startDt, endDt, enfrcType);
     }
-
-    String bgt_no = (String) paramMap.get("bgt_no");
-
-    String bsnss_year = budgetService.decideBsnssYear(paramMap, menu_cd);
-
-    int bgtListSeq = 0;
-
-    CmMap<String, Object> loginMap = budgetService.determineLoginMap(session);
-
-    UserPrivDto userPrivDto = (UserPrivDto) session.getAttribute("s_userPrivInfo");
-    String now = CmFunction.getTodayString("yyyyMMdd");
-
-    CmMap<String, Object> accountItemMap = budgetService.initializeAccountItemMap(account_item, menu_cd, bsnss_year, bgt_no);
-
-    String status = null/*, newStatus = null*/;
-    CmMap<String, Object> stepMap = null; // 진행현황 관련 정보 맵
-    boolean isTransfer = false
-        , isTransferSaveLimit = false
-        , isAdmin = false
-        , enpRegPossble = false // 집행계획금액 등록 가능 상태
-        , atnriNextCheck = false
-        , brdNextCheck = false;
-
-    try {
-        budgetHandler.adjustAccountP();
-
-        CmMap<String, Object> bgtInfo = budgetService.tempGetBgtInfo(bgt_no, bsnss_year, account_item, bsnss_year, budgetHandler, userAuthChecker);
-
-        if(budgetHandler.isOperationAndAccountA()) {
-            CmMap<String, Object> amtMap = budgetService.getOperationAAmtMap(bgt_no, bgtInfo, loginMap, session, bsnss_year);
-            model.addAttribute("amtMap", amtMap);
-        }
-
-        if (bgt_no != null) {
-            bgtListSeq = budgetService.getBgtListSeq(bgt_no, bsnss_year);
-            status = statusUpdateService.getStatus(bgt_no, bsnss_year);
-
-            StepEnum stepEnum = StepEnum.valueOf(CmFunction.makeStepStatus(account_item, status));
-            stepMap = stepEnum.getMap();
-
-            if(budgetHandler.isAccountA()){
-                CmMap<String, Object> accountAMoreInfo = budgetService.getMoreInfoAccountA(bgtInfo, bgt_no, bgtListSeq, bsnss_year, budgetHandler, stepMap, userAuthChecker);
-
-                model.addAttribute("planAllocInfo", accountAMoreInfo.get("planAllocInfo"));  // 신규투자 항목 예산정보
-                model.addAttribute("planReqInfo", accountAMoreInfo.get("planReqInfo")); // 신규투자 요청정보
-                model.addAttribute("reqStatusMap", accountAMoreInfo.get("reqStatusMap")); // ??
-                model.addAttribute("astNoArr", accountAMoreInfo.get("astNoArr")); // 자산번호 배열
-                model.addAttribute("astNoArrTxt", accountAMoreInfo.get("astNoArrTxt"));
-                model.addAttribute("astAuth", accountAMoreInfo.get("astAuth")); // 자산번호 수정가능 권한
-            }
-
-
-            stepMap.put("reqIsDrop", false);
-            if(bgtInfo.get("is_stop").toString().equals("true")) {
-                stepMap.put("statusNm", "운영중지");
-            }
-
-            if (userAuthChecker.isBoOrBmOrAdmin()) {
-                stepMap.put("regType", "reg");
-                stepMap.put("adminCheck", true);
-                logger.debug(":::: 예산운영자, 예산관리자는 모든 status 에서 등록 가능");
-
-                isAdmin = true;
-            } else {
-                stepMap.put("adminCheck", false);
-            }
-
-            if (this.tempStepAuthCheck(userInfo, userAuthChecker, bgtListSeq, (String) stepMap.get("auth"))) {
-                stepMap.put("stepEnumCheck", true);
-            } else {
-                stepMap.put("stepEnumCheck", false);
-            }
-
-            Set<String> FINAL_CHECK_STATES = new HashSet<>(Arrays.asList("a_aad", "fs_aav", "i_aav")); //최종항목점검 중
-            if (this.tempStepAuthCheck(userInfo, userAuthChecker, bgtListSeq, "isPm")
-                && "view".equals(stepMap.getString("regType"))
-                && !FINAL_CHECK_STATES.contains(stepMap.getString("enumNm"))) {
-                stepMap.put("isTempAuth", true);
-            } else {
-                stepMap.put("isTempAuth", userAuthChecker.isUserPrivDtoPresent() ? userAuthChecker.isBm() : userAuthChecker.isAdmin());
-            }
-
-            isTransfer = budgetItemService.getBgtIsTranfer(bgt_no);
-            model.addAttribute("isTransfer", isTransfer);
-
-            if("p".equals(menu_cd) && !isAdmin) {
-                isTransferSaveLimit = isTransfer;
-            }
-            model.addAttribute("isTransferSaveLimit", isTransferSaveLimit);
-
-            CmMap<String, Object> authMap = this.authCheck(bgtListSeq, request);
-
-            if (Boolean.parseBoolean(authMap.getString("cntrcRegAuth"))) {
-                authMap.put("cntrcAddPossible", budgetService.isCntrcAddPossible(stepEnum, account_item, budgetHandler));
-            }
-
-            if (budgetHandler.isOperationAndAccountA()) { 
-                enpRegPossble = stepEnum.valueOf(stepEnum.name()).isAfterThan("a_brd");
-                atnriNextCheck = stepEnum.valueOf(stepEnum.name()).isAfterThan("a_aav");
-                brdNextCheck = stepEnum.valueOf(stepEnum.name()).isAfterThan("a_brd");
-            } else if (budgetHandler.isOperationAndAccountFOrS()) { 
-                enpRegPossble = stepEnum.valueOf(stepEnum.name()).isEqualOrAfterThan("fs_brd");
-            } else if (budgetHandler.isPlanAndAccountA()) { 
-                enpRegPossble = stepEnum.valueOf(stepEnum.name()).isBeforeThan("a_ppd");
-            } else if (budgetHandler.isPlanAndAccountFOrS()) {
-                enpRegPossble = true;
-            }
-
-
-            String cntrcType = String.valueOf(bgtInfo.get("bgt_cntrc_type"));
-            if ("품의작성".equals(stepMap.get("buttonNm")) && !cntrcType.equals("d")) { 
-                boolean isApprovalManager = budgetService.getBgtApproValManagerCheck(bgt_no, (String) session.getAttribute("s_memId"));
-                stepMap.put("isApprovalManager", isApprovalManager);
-
-                boolean isApprovalCreated = budgetService.getBgtApprovalCreatedCheck(bgt_no);
-
-                boolean hasApprovalRequiredValues = !isApprovalCreated && budgetService.checkApprovalRequiredValues(bgtInfo, account_item); 
-                model.addAttribute("hasApprovalRequiredValues", hasApprovalRequiredValues);
-
-                if (hasApprovalRequiredValues) {
-                    boolean isApprovalPeriod = budgetService.checkIsApprovalPeriod(bgtInfo, now);
-                    if (isApprovalPeriod) {
-                        model.addAttribute("isApprovalBtnExpose", true);
-                        if (isApprovalManager || userAuthChecker.isBmOrAdmin()) {
-                            ApprovalAmtDTO approvalAmtDTO = budgetService.prepareAndUpdateApprovalAmtInfo(bgtInfo, bsnss_year, bgt_no, account_item);
-                            model.addAttribute("approvalUrl", approvalAmtDTO.getApprovalType().equals("100") ? APPROVAL_INV_URL + bgt_no : APPROVAL_URL + bgt_no);
-                        }
-
-                    } else {
-                        model.addAttribute("isApprovalBtnExpose", false);
-                    }
-                } else {
-                    model.addAttribute("isApprovalBtnExpose", false);
-                }
-            }
-
-            model.addAttribute("stepEnum", stepMap);
-            model.addAttribute("stepEnumName", stepEnum.name());
-            model.addAttribute("status", status);
-            model.addAttribute("authMap", authMap);
-
-            if (status.equals("afd") || enpRegPossble) { 
-                CmMap<String, Object> enfrcMap = budgetService.enfrcMap(bgt_no, bgtListSeq, session, bsnss_year);
-                model.addAttribute("enfrcMap", enfrcMap);
-                if(budgetHandler.isAccountI()) { 
-                    model.addAttribute("isCmpEmpno", budgetService.isCmpEmpno(bgtListSeq, (String) session.getAttribute("s_memId"))); 
-                    model.addAttribute("newItoClosedStatus", budgetService.getBgtNewItoMonthClosedStatus(bgtListSeq, now.substring(0,6)));
-                }
-            }
-
-            if(budgetHandler.isAccountI()) {
-                model.addAttribute("arcRrcDisabled", budgetService.arcRrcDisabled(bgt_no, bgtListSeq, bsnss_year));
-                model.addAttribute("newItoFileMemoExistYmList", budgetService.getNewItoFileMemoExistYmList(bgtListSeq, "newito_month"));
-                model.addAttribute("distribution_type", CmFunction.ITO_AREA_AMS.containsKey(bgt_no) ? "view" : "");
-            }
-
-            model.addAttribute("tagList", commonService.getTagList("bgt_list_data", bgtListSeq));
-            model.addAttribute("changePrchsWay", budgetService.changePrchsWay(bgt_no));
-        }
-
-        List<CmMap<String, Object>> InvPrpsList = commonService.getCodeInfoInvList(bsnss_year);
-
-        if(budgetHandler.isPlan()) { // 계획
-            model.addAttribute("plan_schedule", planService.planSchedule(bsnss_year, null));//예산운영일정
-            InvPrpsList.removeIf(item -> "migration".equals(item.getString("sub_nm")));
-        }
-        model.addAttribute("InvPrpsList", InvPrpsList);
-        model.addAttribute("chargebackVo", budgetService.getBgtCbInfo((List<String>) bgtInfo.get("monthly"), bgtListSeq, 0, account_item, status, (List<String>) bgtInfo.get("itsm_list")));
-        model.addAttribute("cntrcApprovalVo", budgetService.getBgtCntrcInfo(bgtListSeq));
-        model.addAttribute("prchsWayList", commonService.getCodeInfoList("prchs_way"));
-        model.addAttribute("BgtCntrcTypeList", commonService.getCodeInfoList("bgt_cntrc_type"));
-        model.addAttribute("isBm", userAuthChecker.isBm());
-        model.addAttribute("isBo", userAuthChecker.isBo());
-        model.addAttribute("isPm", userAuthChecker.isPm());
-        model.addAttribute("isTm", userAuthChecker.isTm());
-        model.addAttribute("isAdmin", session.getAttribute("s_isAdmin"));
-        model.addAttribute("bgtVo", bgtInfo);
-
-    } catch (Exception e) {
-        logger.error("exception", e);
-    }
-
-    model.addAttribute("classNm", BgtEnum.valueOf(account_item).getTitle());
-    model.addAttribute("accountItem", accountItemMap);
-    model.addAttribute("LoginMap", loginMap);
-    model.addAttribute("bgtListSeq", bgtListSeq);
-    model.addAttribute("bgtNo", bgt_no);
-    model.addAttribute("status", status);
-    model.addAttribute("priv", session.getAttribute("s_userPrivInfo"));
-    model.addAttribute("isMigration", bgt_no == null ? false : budgetService.isMigration(bgt_no, bsnss_year));
-    model.addAttribute("btnNowBy", (bgt_no == null || bsnss_year.equals(commonService.getBudgetYear())) ? null : budgetItemService.getNowBsnssYear(bgt_no, commonService.getBudgetYear()));
-    model.addAttribute("btnBeforeBy", bgt_no == null ? null : budgetItemService.getBeforeBsnssYear(bgt_no, bsnss_year));
-
-    Map<String, Object> currentStepMap = budgetService.getCurrentStepMap(userAuthChecker, account_item, status, stepMap);
-
-    if(paramMap.get("reportId") != null && !"".equals(paramMap.get("reportId"))) {
-        model.addAttribute("reportId", (String) paramMap.get("reportId"));
-    }
-
-
-    boolean approvalFlag = false;
-    if(status != null){
-        if(status.equals("aad") || status.equals("bpcn")){
-            approvalFlag = budgetService.checkApprovalFlag(bgt_no);
-        }
-    }
-
-
-    model.addAttribute("isView", currentStepMap);
-    model.addAttribute("account_item", account_item);
-    model.addAttribute("enpRegPossble" ,enpRegPossble);
-    model.addAttribute("atnriNextCheck" , atnriNextCheck);
-    model.addAttribute("brdNextCheck" , brdNextCheck);
-    model.addAttribute("menuCd" , menu_cd);
-    model.addAttribute("approvalFlag" , approvalFlag);
-
-    return "/budget/item_view";
 }
+
+    /**
+     * @apiNote 예산계획/운영 > NEW ITO > 예산정보의 세부항목 정보
+     * @date 2023-04-03
+     * @yser kimhyerin
+     * @param bgtNo         예산관리번호 (String)
+     * @param bsnssYear     경영주기 (String)
+     * @prarm bgtListSeq    예산관리번호 seq (int)
+     * @param monthly       경영주기 연월 (List<String>)
+     * @param startYear     시작 연도 (String)
+     * @param endYear       종료 연도 (String)
+     */
+    @Override
+    public CmMap<String, Object> getBgtInfoDetail_i(String bgtNo, String bsnssYear, int bgtListSeq, List<String> monthly, String startYear, String endYear) {
+        CmMap<String, Object> resultMap = new CmMap<>();
+        LinkedHashMap<String, Object> monthlyEnfrcDetail = new LinkedHashMap<>();
+        CmMap<String, Object> paramMap = new CmMap<>();
+
+        try {
+            paramMap.put("bgtNo", bgtNo);
+            paramMap.put("bsnssYear", bsnssYear);
+            List<CmMap<String, Object>> bgtInfoList = planDao.getBgtInfoNewItoDetailBgtNo(paramMap); // 하위 예산항목 리스트 [dbo.bgt_newito_data]
+
+            resultMap.put("bgtLength", bgtInfoList.size());
+            if(bgtInfoList.size() > 0) {
+                resultMap.put("firstBgtNewitoSeq", bgtInfoList.get(0).getInt("bgt_newito_seq"));
+            }
+
+            paramMap.put("bgtListSeq", bgtListSeq);
+            paramMap.put("startYear", startYear);
+            paramMap.put("endYear", endYear);
+            paramMap.put("bgtEnfrcTypeList", Arrays.asList("as", "enp", "en", "asc", "arc", "ascarc", "pl"));
+            List<LinkedHashMap<String, Object>> bgtEnfrcList = budgetDao.getNewItoMonthlyInfoList(paramMap); // 하위 예산항목 월별 집행 정보 [dbo.bgt_newito_month_data]
+            List<LinkedHashMap<String, Object>> bgtDistList = budgetDao.getNewItoMonthlyDistList(paramMap); // 하위 예산항목 월별 배부기준 정보 [dbo.bgt_newito_month_detail_data]
+
+            for(int b=0; b<bgtInfoList.size(); b++) {
+                CmMap<String, Object> enfrc = new CmMap<>();
+                if(bgtDistList.size() > 0) {
+                    Map<String, Object> monthly_distRule = new LinkedHashMap<>();
+                    Map<String, Object> monthly_distRuleInt = new LinkedHashMap<>();
+                    Map<String, Object> monthly_distTypeValue = new LinkedHashMap<>();
+
+                    for (LinkedHashMap<String, Object> s : bgtDistList) {
+                        if(s.get("bgt_newito_seq").toString().equals(bgtInfoList.get(b).getString("bgt_newito_seq"))) {
+                            for (Object o : s.keySet()) {
+                                if (monthly.contains(s.get("year") + ((String) o).substring(1,3))) {
+                                    if(((String) o).contains("_dist_rule_int")) {
+                                        monthly_distRuleInt.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    } else if(((String) o).contains("_dist_rule")) {
+                                        monthly_distRule.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    } else if(((String) o).contains("_detail_type_value")) {
+                                        monthly_distTypeValue.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    enfrc.put("monthly_distRule", monthly_distRule);
+                    enfrc.put("monthly_distRuleInt", monthly_distRuleInt);
+                    enfrc.put("monthly_distTypeValue", monthly_distTypeValue);
+                }
+
+                if(bgtEnfrcList.size() > 0) {
+                    CmMap<String, Object> enfrcMonthAll = new CmMap<>();
+                    for (Object monthlyStr : monthlyEnfrcStrAll.keySet()) {
+                        CmMap<String, Object> enfrcMonth = new CmMap<>();
+                        Map<String, Object> monthly_amt = new LinkedHashMap<>();
+                        long total = 0;
+                        for (LinkedHashMap<String, Object> s : bgtEnfrcList) {
+                            if(s.get("bgt_newito_seq").toString().equals(bgtInfoList.get(b).getString("bgt_newito_seq")) && s.get("bgt_enfrc_type").equals(monthlyStr.toString())) {
+                                for (Object o : s.keySet()) {
+                                    if (monthly.contains(s.get("year") + (String) o)) {
+                                        total += Long.parseLong(String.valueOf(s.get(o)));
+                                        monthly_amt.put(s.get("year") + (String) o, s.get(o));
+                                    }
+                                }
+                            }
+                        }
+                        enfrcMonth.put("total", total);
+                        enfrcMonth.put("monthly_amt", monthly_amt);
+                        if(!monthly_amt.isEmpty()) {
+                            enfrcMonthAll.put(monthlyStr.toString(), enfrcMonth); // key = bgt_enfrc_type
+                        }
+                    }
+                    if(!enfrcMonthAll.isEmpty()) {
+                        enfrc.put("monthly_value", enfrcMonthAll);
+                    }
+                }
+
+                enfrc.put("bgt_item", bgtInfoList.get(b).getString("bgt_item"));
+                enfrc.put("master_cd", bgtInfoList.get(b).getString("master_cd"));
+                enfrc.put("value_chain", bgtInfoList.get(b).getString("value_chain"));
+                enfrc.put("master_cd_nm", bgtInfoList.get(b).getString("master_cd_nm"));
+                enfrc.put("value_chain_nm", bgtInfoList.get(b).getString("value_chain_nm"));
+                enfrc.put("is_delete", false);
+                monthlyEnfrcDetail.put(bgtInfoList.get(b).getString("bgt_newito_seq"), enfrc); // key = bgt_newito_seq
+            }
+            resultMap.put("monthlyEnfrcDetail", monthlyEnfrcDetail);
+
+        } catch (Exception e) {
+            logger.error("exception", e);
+        }
+
+        return resultMap;
+    }
+
+
+    /**
+     * @apiNote 예산계획/운영 > 지급수수료/보안용역수수료 > 예산정보의 세부항목 정보
+     * @date 2023-04-03
+     * @yser kimhyerin
+     * @param bgtNo         예산관리번호 (String)
+     * @param bsnssYear     경영주기 (String)
+     * @param monthly       경영주기 연월 (List<String>)
+     * @param startYear     시작 연도 (String)
+     * @param endYear       종료 연도 (String)
+     */
+    @Override
+    public CmMap<String, Object> getBgtInfoDetail_fs(String bgtNo, String bsnssYear, List<String> monthly, String startYear, String endYear, LinkedHashMap<String, Object> enfrcType) {
+        CmMap<String, Object> resultMap = new CmMap<>();
+        LinkedHashMap<String, Object> monthlyEnfrcDetail = new LinkedHashMap<>();
+        CmMap<String, Object> paramMap = new CmMap<>();
+
+        try {
+            paramMap.put("bgtNo", bgtNo);
+            paramMap.put("bsnssYear", bsnssYear);
+
+            /** TODO
+             *  bgt_list_data 테이블에서 detail_seq, detail_type, detail_type_value, dist_rule_int 값이 안쓰이는 것 같음. 불필요컬럼 삭제 가능 여부 확인 필요
+             */
+            List<CmMap<String, Object>> bgtInfoList = planDao.getBgtInfoDetailBgtNo(paramMap); // 하위 예산항목 리스트 [dbo.bgt_list_data]
+
+            paramMap.put("startYear", startYear);
+            paramMap.put("endYear", endYear);
+            paramMap.put("bgtEnfrcTypeList", Arrays.asList("pl", "sch", "cniv", "enp"));
+            List<LinkedHashMap<String, Object>> bgtEnfrcList = budgetDao.getMonthlyEnfrcInfoList(paramMap); // 하위 예산항목 월별 집행 정보 [dbo.bgt_enfrc_data / dbo.bgt_list_dist_rule]
+            List<LinkedHashMap<String, Object>> bgtDistList = budgetDao.getBgtInfoMonthlyDistList(paramMap); // 하위 예산항목 월별 집행 정보 [dbo.bgt_newito_month_detail_data]
+
+            for(int b=0; b<bgtInfoList.size(); b++) {
+                CmMap<String, Object> enfrc = new CmMap<>();
+
+                Map<String, Object> monthly_amt = new LinkedHashMap<>();
+                Map<String, Object> monthly_amt_pl = new LinkedHashMap<>();
+                Map<String, Object> monthly_amt_cniv = new LinkedHashMap<>();
+                Map<String, Object> monthly_amt_enp = new LinkedHashMap<>();
+                long total = 0, pl_total = 0, cniv_total = 0, enp_total = 0;
+
+                if(bgtDistList.size() > 0) {
+                    Map<String, Object> monthly_distRule = new LinkedHashMap<>();
+                    Map<String, Object> monthly_distRuleInt = new LinkedHashMap<>();
+                    Map<String, Object> monthly_distTypeValue = new LinkedHashMap<>();
+
+                    for (LinkedHashMap<String, Object> s : bgtDistList) {
+                        if(s.get("bgt_no").equals(bgtInfoList.get(b).getString("bgt_no"))) {
+                            for (Object o : s.keySet()) {
+                                if (monthly.contains(s.get("year") +  ((String) o).substring(1,3))) {
+                                    if(((String) o).contains("_dist_rule_int")) {
+                                        monthly_distRuleInt.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    } else if(((String) o).contains("_dist_rule")) {
+                                        monthly_distRule.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    } else if(((String) o).contains("_detail_type_value")) {
+                                        monthly_distTypeValue.put(s.get("year") + ((String) o).substring(1,3), s.get(o));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    enfrc.put("monthly_distRule", monthly_distRule);
+                    enfrc.put("monthly_distRuleInt", monthly_distRuleInt);
+                    enfrc.put("monthly_distTypeValue", monthly_distTypeValue);
+
+                    for (LinkedHashMap<String, Object> s : bgtEnfrcList) {
+                        if(s.get("bgt_no").equals(bgtInfoList.get(b).getString("bgt_no"))) {
+                            for (Object o : s.keySet()) {
+                                if (monthly.contains(s.get("year") + (String) o)) {
+                                    if("pl".equals(s.get("bgt_enfrc_type"))) {
+                                        pl_total += Long.parseLong(String.valueOf(s.get(o)));
+                                        monthly_amt_pl.put(s.get("year") + (String) o, s.get(o));
+                                    } else if("cniv".equals(s.get("bgt_enfrc_type"))) {
+                                        cniv_total += Long.parseLong(String.valueOf(s.get(o)));
+                                        monthly_amt_cniv.put(s.get("year") + (String) o, s.get(o));
+                                    } else if("enp".equals(s.get("bgt_enfrc_type"))) {
+                                        enp_total += Long.parseLong(String.valueOf(s.get(o)));
+                                        monthly_amt_enp.put(s.get("year") + (String) o, s.get(o));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if(enfrcType.containsKey("cniv")) {
+                        total = cniv_total;
+                        monthly_amt = monthly_amt_cniv;
+                    } else {
+                        total = pl_total;
+                        monthly_amt = monthly_amt_pl;
+                    }
+
+                    enfrc.put("total", total);
+                    enfrc.put("monthly_amt", monthly_amt);
+                    enfrc.put("pl_total", pl_total);
+                    enfrc.put("monthly_amt_pl", monthly_amt_pl);
+                    enfrc.put("cniv_total", cniv_total);
+                    enfrc.put("monthly_amt_cniv", monthly_amt_cniv);
+                    enfrc.put("enp_total", enp_total);
+                    enfrc.put("monthly_amt_enp", monthly_amt_enp);
+                }
+
+                enfrc.put("bgt_item", bgtInfoList.get(b).getString("bgt_item"));
+                enfrc.put("bgt_list_seq", bgtInfoList.get(b).getInt("bgt_list_seq"));
+
+                // 23.04.05 조건 변경이나, 이전 코드는 주석 처리
+                // 삭제 가능한 예산항목의 조건 -> 등록한 계약이 없을 때
+                CmMap<String, Object> deleteMap = new CmMap<>();
+                deleteMap.put("bgtNo", bgtNo);
+                deleteMap.put("bsnssYear", bsnssYear);
+                Boolean isDelete = budgetDao.getBgtNoDetailDelete(deleteMap);
+                enfrc.put("is_delete", isDelete.equals(true) ? true : false); // is_delete 가 true = 삭제 가능, false = 삭제 불가능
+
+                monthlyEnfrcDetail.put(bgtInfoList.get(b).getString("bgt_no"), enfrc); // key = bgt_no
+            }
+
+            resultMap.put("monthlyEnfrcDetail", monthlyEnfrcDetail);
+
+        } catch (Exception e) {
+            logger.error("exception", e);
+        }
+
+        return resultMap;
+    }
