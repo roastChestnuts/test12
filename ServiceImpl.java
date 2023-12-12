@@ -17,3 +17,8 @@
         }
         return resMap;
     }
+
+    @Override
+    public void invoicePopupWithdraw(int invoice_seq, String memId) {
+        emailClient.sendInvoicePopupSaveEmail(invoice_seq, "Invoice 수취확인 취소 안내 메일", "invoice/receipt_cancel");
+    }
