@@ -46,7 +46,7 @@ public class Mail {
     //자동메일 제외할 수신자 목록
     private static List<String> filterExceptEmails(List<String> mailList) {
         List<String> exceptMailList = Arrays.asList(
-              "doc1@amorepacific.com"
+              "doc1@aaa.com"
         );
         return mailList.stream()
             .filter(email -> !exceptMailList.contains(email))
