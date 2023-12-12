@@ -37,7 +37,7 @@ public class Mail {
         } else {
             //개발 환경 테스트 수신자 목록
             adjustedList = Arrays.asList(
-                "like10495@amorepacific.com"
+                "like10495@aaa.com"
             );
         }
         return filterExceptEmails(adjustedList);
