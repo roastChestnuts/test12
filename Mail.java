@@ -16,7 +16,7 @@ public class Mail {
         String serverType = CmPathInfo.getSERVER_TYPE();
 
         this.fromName = Optional.ofNullable(fromName).orElse("디지털예산운영시스템");
-        this.fromEmail = Optional.ofNullable(fromEmail).orElse("dbos@amorepacific.com");
+        this.fromEmail = Optional.ofNullable(fromEmail).orElse("dbos@aaa.com");
         this.toList = adjustReceiverList(toList, serverType); //수신자 목록 조정(운영, 개발 구분)
         this.ccMailList = serverType.equals("REAL") ? ccMailList : null; //운영서버일 경우 ccMail 세팅
         this.title = title;
