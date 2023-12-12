@@ -13,8 +13,8 @@ public class EmailService {
 
     /**
      * @param mail : 메일 객체
-     * @param templateName : 보낼 메일템플릿명
-     * @param data : 렌더링 할 데이터
+     * @param templateName : 보낼 메일 템플릿명
+     * @param data : 템플릿에 렌더링 할 데이터
      * */
     @Async("mailExecutor")
     public void sendMail(Mail mail, String templateName, Map<String, Object> data) {
