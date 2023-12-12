@@ -15,7 +15,7 @@ public class Mail {
     public Mail(String fromName, String fromEmail, List<String> toList, List<String> ccMailList, String title, String content, String urlSuffix) {
         String serverType = CmPathInfo.getSERVER_TYPE();
 
-        this.fromName = Optional.ofNullable(fromName).orElse("디지털예산운영시스템");
+        this.fromName = Optional.ofNullable(fromName).orElse("운영시스템");
         this.fromEmail = Optional.ofNullable(fromEmail).orElse("dbos@aaa.com");
         this.toList = adjustReceiverList(toList, serverType); //수신자 목록 조정(운영, 개발 구분)
         this.ccMailList = serverType.equals("REAL") ? ccMailList : null; //운영서버일 경우 ccMail 세팅
@@ -33,7 +33,7 @@ public class Mail {
         List<String> adjustedList = new ArrayList<>();
         if (serverType.equals("REAL")) {
             adjustedList.addAll(originalList);
-            adjustedList.add("myunsookim@amorepacific.com"); // 운영계의 모든 메일에 김면수님 수신인으로 추가
+            adjustedList.add("mskim@aaa.com"); // 운영계의 모든 메일에 수신인으로 추가
         } else {
             //개발 환경 테스트 수신자 목록
             adjustedList = Arrays.asList(
@@ -43,7 +43,7 @@ public class Mail {
         return filterExceptEmails(adjustedList);
     }
 
-    //자동메일 제외할 수신자 목록
+    //메일 제외할 수신자 목록
     private static List<String> filterExceptEmails(List<String> mailList) {
         List<String> exceptMailList = Arrays.asList(
               "doc1@aaa.com"
