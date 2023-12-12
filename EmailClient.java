@@ -1,15 +1,3 @@
-package com.amore.apbos.service.email;
-
-import com.amore.apbos.model.Mail;
-import com.amore.apbos.service.invoice.InvoiceDao;
-import com.amore.apbos.util.CmMail;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 @Service
 public class EmailClient {
     private EmailServiceTemplate emailServiceTemplate = new EmailServiceTemplate();
